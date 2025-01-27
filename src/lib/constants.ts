@@ -17,7 +17,7 @@ export const OBOL_CONTRACT_ABI = [
 ] as const;
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/your-api-key';
-export const TALLY_API_KEY = process.env.TALLY_API_KEY;
+export const TALLY_API_KEY = process.env.NEXT_PUBLIC_TALLY_API_KEY;
 
 // Tally API endpoints
 export const TALLY_API_BASE_URL = 'https://api.tally.xyz/query';

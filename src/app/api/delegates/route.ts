@@ -6,6 +6,16 @@ import { CACHE_KEYS } from '@/lib/constants';
 
 export const runtime = 'edge';
 
+interface DelegateResponse {
+  timestamp: number;
+  delegates: Array<{
+    address: string;
+    ens?: string;
+    votes: string;
+  }>;
+  totalVotes: number;
+}
+
 export async function GET() {
   try {
     // Check for cached data
@@ -15,11 +25,15 @@ export async function GET() {
       console.log('Found cached delegate data');
       try {
         // Handle both string and object cases
-        const parsedData = typeof cachedData === 'string' 
+        const parsedData: DelegateResponse = typeof cachedData === 'string' 
           ? JSON.parse(cachedData)
           : cachedData;
         
-        console.log(`Returning cached data with ${parsedData.delegates?.length || 0} delegates`);
+        if (!parsedData.delegates || !Array.isArray(parsedData.delegates)) {
+          throw new Error('Invalid cached data format');
+        }
+        
+        console.log(`Returning cached data with ${parsedData.delegates.length} delegates`);
         return new NextResponse(JSON.stringify(parsedData), {
           status: 200,
           headers: {
@@ -29,6 +43,7 @@ export async function GET() {
         });
       } catch (parseError) {
         console.error('Error parsing cached data:', parseError);
+        // Continue to fetch fresh data
       }
     }
 
@@ -40,20 +55,20 @@ export async function GET() {
     const delegates = await getDelegates();
     console.log('Delegates from Tally:', JSON.stringify(delegates, null, 2));
     
-    if (!delegates || delegates.length === 0) {
-      console.log('No delegates found from Tally');
-      const emptyData = { 
+    if (!delegates || !Array.isArray(delegates)) {
+      console.log('No valid delegates found from Tally');
+      const emptyResponse: DelegateResponse = { 
         timestamp: Date.now(),
         delegates: [],
         totalVotes: 0
       };
       
       // Cache the empty result to prevent constant retries
-      await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
+      await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyResponse), {
         ex: 60 * 5 // Cache empty results for 5 minutes
       });
       
-      return new NextResponse(JSON.stringify(emptyData), {
+      return new NextResponse(JSON.stringify(emptyResponse), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
@@ -65,18 +80,18 @@ export async function GET() {
     // Get voting power for each delegate
     const delegatesWithVotes = await getDelegatesWithVotes(delegates);
     
-    const data = {
+    const response: DelegateResponse = {
       timestamp: Date.now(),
       delegates: delegatesWithVotes,
       totalVotes: delegatesWithVotes.reduce((sum, d) => sum + parseFloat(d.votes), 0)
     };
 
     // Cache the data
-    await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
+    await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(response), {
       ex: 60 * 5 // 5 minutes
     });
 
-    return new NextResponse(JSON.stringify(data), {
+    return new NextResponse(JSON.stringify(response), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

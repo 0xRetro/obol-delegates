@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     domains: ['assets.tally.xyz'],
   },
   reactStrictMode: true,
+  env: {
+    TALLY_API_KEY: process.env.TALLY_API_KEY!,
+  }
 };
 
 export default nextConfig;
