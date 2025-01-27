@@ -79,61 +79,23 @@ async function DelegateContent() {
   try {
     console.log('Fetching delegates from API...');
     
-    const res = await fetch('/api/delegates', {
+    // In Edge Runtime, we must use absolute URLs
+    const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
+    const host = process.env.VERCEL_URL || 'localhost:3000';
+    const url = `${protocol}://${host}/api/delegates`;
+    
+    const res = await fetch(url, {
       cache: 'no-store'
     });
     
     if (!res.ok) {
-      if (res.status === 404) {
-        console.log('No cached data found, fetching fresh data...');
-        return (
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <div className="text-lg">
-              Fetching initial delegate data...
-            </div>
-            <div className="text-sm text-gray-500 mt-2">
-              This may take a few minutes as we sync with Tally and the blockchain.
-            </div>
-          </div>
-        );
-      }
-      
-      const errorText = await res.text();
-      console.error('Failed to fetch delegates:', {
-        status: res.status,
-        statusText: res.statusText,
-        error: errorText
-      });
       throw new Error(`Failed to fetch delegates: ${res.status} ${res.statusText}`);
     }
 
     const data = await res.json();
-    console.log('Received data:', JSON.stringify(data, null, 2));
     
-    if (!data) {
-      console.error('No data received');
-      throw new Error('No data received from API');
-    }
-    
-    if (!data.delegates) {
-      console.error('No delegates array in response:', data);
-      throw new Error('No delegates array in response');
-    }
-    
-    if (!Array.isArray(data.delegates)) {
-      console.error('Delegates is not an array:', typeof data.delegates);
-      throw new Error('Delegates is not an array');
-    }
-
-    if (!data.timestamp) {
-      console.error('No timestamp in response:', data);
-      throw new Error('No timestamp in response');
-    }
-
-    if (!data.totalVotes) {
-      console.error('No totalVotes in response:', data);
-      throw new Error('No totalVotes in response');
+    if (!data || !Array.isArray(data.delegates)) {
+      throw new Error('Invalid data format received');
     }
 
     const isStale = needsRefresh(data.timestamp);

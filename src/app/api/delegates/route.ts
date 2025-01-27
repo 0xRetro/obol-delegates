@@ -4,6 +4,8 @@ import { getDelegates } from '@/lib/tally';
 import { getDelegatesWithVotes } from '@/lib/blockchain';
 import { CACHE_KEYS } from '@/lib/constants';
 
+export const runtime = 'edge';
+
 export async function GET() {
   try {
     // Check for cached data
@@ -18,11 +20,15 @@ export async function GET() {
           : cachedData;
         
         console.log(`Returning cached data with ${parsedData.delegates?.length || 0} delegates`);
-        console.log('Cached delegate data:', JSON.stringify(parsedData.delegates, null, 2));
-        return NextResponse.json(parsedData);
+        return new NextResponse(JSON.stringify(parsedData), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
+          }
+        });
       } catch (parseError) {
         console.error('Error parsing cached data:', parseError);
-        // If we can't parse the cached data, we'll fetch fresh data
       }
     }
 
@@ -47,45 +53,47 @@ export async function GET() {
         ex: 60 * 5 // Cache empty results for 5 minutes
       });
       
-      return NextResponse.json(emptyData);
+      return new NextResponse(JSON.stringify(emptyData), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
+        }
+      });
     }
-    
-    // Get voting power for delegates
-    console.log(`Fetching voting power for ${delegates.length} delegates...`);
-    const delegatesWithVotes = await getDelegatesWithVotes(delegates);
-    console.log('Delegates with votes:', JSON.stringify(delegatesWithVotes, null, 2));
-    
-    // Calculate total votes
-    const totalVotes = delegatesWithVotes.reduce((sum, delegate) => 
-      sum + Number(delegate.votes), 0);
 
-    // Prepare data for caching by combining delegate info with votes
+    // Get voting power for each delegate
+    const delegatesWithVotes = await getDelegatesWithVotes(delegates);
+    
     const data = {
       timestamp: Date.now(),
-      delegates: delegates.map(delegate => ({
-        address: delegate.address,
-        ens: delegate.ens,
-        votes: delegatesWithVotes.find(d => d.address === delegate.address)?.votes || '0'
-      })),
-      totalVotes
+      delegates: delegatesWithVotes,
+      totalVotes: delegatesWithVotes.reduce((sum, d) => sum + parseFloat(d.votes), 0)
     };
 
-    console.log('Final data to cache:', JSON.stringify(data, null, 2));
-
     // Cache the data
-    console.log(`Caching delegate data with ${data.delegates.length} delegates...`);
-    const serializedData = JSON.stringify(data);
-    await redis.set(CACHE_KEYS.DELEGATES, serializedData, {
-      ex: 24 * 60 * 60 // 24 hours
+    await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
+      ex: 60 * 5 // 5 minutes
     });
 
-    return NextResponse.json(data);
+    return new NextResponse(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
+      }
+    });
   } catch (error) {
-    console.error('Error in GET /api/delegates:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch delegate data' },
-      { status: 500 }
-    );
+    console.error('Error in delegates API:', error);
+    return new NextResponse(JSON.stringify({ 
+      error: 'Failed to fetch delegates',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 }
 

@@ -1,7 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb'
+    },
+  },
+  images: {
+    domains: ['assets.tally.xyz'],
+  },
+  reactStrictMode: true,
 };
 
 export default nextConfig;
