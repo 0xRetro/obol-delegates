@@ -43,6 +43,10 @@ const needsRefresh = (timestamp: number): boolean => {
 const formatTimeUntilRefresh = (timestamp: number): string => {
   const timeLeft = (timestamp + 60 * 60 * 1000) - Date.now();
   const minutesLeft = Math.floor(timeLeft / (60 * 1000));
+  // If time is negative or 0, show "Updating..."
+  if (minutesLeft <= 0) {
+    return 'Updating...';
+  }
   return `${minutesLeft}m`;
 };
 
@@ -81,11 +85,13 @@ async function DelegateContent() {
     // In Edge Runtime, we must use absolute URLs
     const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
     const host = process.env.VERCEL_URL || 'localhost:3000';
-    const url = `${protocol}://${host}/api/delegates`;
+    const timestamp = Date.now(); // Add timestamp for cache busting
+    const url = `${protocol}://${host}/api/delegates?t=${timestamp}`;
     
     const res = await fetch(url, {
       next: {
-        revalidate: 60 * 60 // 1 hour
+        revalidate: 60 * 60, // 1 hour
+        tags: ['delegates'] // Add tag for revalidation
       }
     });
     
@@ -132,12 +138,12 @@ async function DelegateContent() {
               <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
                 Last updated: {formatLastUpdated(data.timestamp)}
                 {isStale ? (
-                  <span className="text-orange-600">
-                    (Next update in {formatTimeUntilRefresh(data.timestamp)})
+                  <span className="text-orange-600 animate-pulse">
+                    ({formatTimeUntilRefresh(data.timestamp)})
                   </span>
                 ) : (
                   <span className="text-green-600">
-                    (Next update in {formatTimeUntilRefresh(data.timestamp)})
+                    ({formatTimeUntilRefresh(data.timestamp)})
                   </span>
                 )}
               </div>
