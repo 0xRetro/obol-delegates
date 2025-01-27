@@ -20,8 +20,19 @@ const isRetryableError = (error: Error | unknown): boolean => {
   );
 };
 
+type ContractParam = string | number | boolean | ContractParam[];
+
+interface Delegate {
+  address: string;
+  ens?: string;
+}
+
+interface DelegateWithVotes extends Delegate {
+  votes: string;
+}
+
 // Make a direct JSON-RPC call
-async function callContract(method: string, params: any[]): Promise<string> {
+async function callContract(method: string, params: ContractParam[]): Promise<string> {
   if (!RPC_URL) {
     throw new Error('RPC_URL environment variable is not set');
   }
@@ -82,17 +93,20 @@ export const getDelegateVotes = async (delegateAddress: string): Promise<string>
 };
 
 // Process delegates in batches with rate limiting and retries
-export const getDelegatesWithVotes = async (delegates: { address: string }[]): Promise<Array<{ address: string, votes: string }>> => {
-  const results: Array<{ address: string, votes: string }> = [];
-  const batchSize = 3; // Reduced batch size for better reliability
+export const getDelegatesWithVotes = async (delegates: Delegate[]): Promise<DelegateWithVotes[]> => {
+  const results: DelegateWithVotes[] = [];
+  const batchSize = 4; // Reduced batch size for better reliability
   
   for (let i = 0; i < delegates.length; i += batchSize) {
     const batch = delegates.slice(i, Math.min(i + batchSize, delegates.length));
     console.log(`Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(delegates.length/batchSize)}`);
     
     const batchResults = await Promise.all(
-      batch.map(delegate => getDelegateVotes(delegate.address)
-        .then(votes => ({ address: delegate.address, votes })))
+      batch.map(async delegate => ({
+        address: delegate.address,
+        ens: delegate.ens,
+        votes: await getDelegateVotes(delegate.address)
+      }))
     );
     
     results.push(...batchResults);
