@@ -1,51 +1,17 @@
 import { ethers } from 'ethers';
 import { OBOL_CONTRACT_ADDRESS, OBOL_CONTRACT_ABI, RPC_URL } from './constants';
 
-let provider: ethers.JsonRpcProvider;
-let contract: ethers.Contract;
-
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
-
-export const initializeProvider = () => {
-  if (!provider) {
-    if (!RPC_URL) {
-      throw new Error('RPC_URL environment variable is not set');
-    }
-    provider = new ethers.JsonRpcProvider(RPC_URL);
-    contract = new ethers.Contract(OBOL_CONTRACT_ADDRESS, OBOL_CONTRACT_ABI, provider);
-  }
-  return { provider, contract };
-};
-
-const OBOL_TOKEN_ADDRESS = '0x0b010000b7624eb9b3dfbc279673c76e9d29d5f7';
-const OBOL_TOKEN_ABI = [
-  // We only need the getVotes function from the ABI
-  {
-    "inputs": [{"internalType": "address","name": "account","type": "address"}],
-    "name": "getVotes",
-    "outputs": [{"internalType": "uint256","name": "","type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-// Initialize provider and contract
-const initializeContract = () => {
-  if (!provider || !contract) {
-    provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL);
-    contract = new ethers.Contract(OBOL_TOKEN_ADDRESS, OBOL_TOKEN_ABI, provider);
-  }
-  return contract;
-};
 
 // Helper to delay between requests with exponential backoff
 const delay = (retryCount: number) => 
   new Promise(resolve => setTimeout(resolve, INITIAL_RETRY_DELAY * Math.pow(2, retryCount)));
 
 // Helper to check if error is retryable
-const isRetryableError = (error: any): boolean => {
-  const errorMessage = error?.message?.toLowerCase() || '';
+const isRetryableError = (error: Error | unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const errorMessage = error.message.toLowerCase();
   return (
     errorMessage.includes('timeout') ||
     errorMessage.includes('network') ||
@@ -53,6 +19,40 @@ const isRetryableError = (error: any): boolean => {
     errorMessage.includes('too many requests')
   );
 };
+
+// Make a direct JSON-RPC call
+async function callContract(method: string, params: any[]): Promise<string> {
+  if (!RPC_URL) {
+    throw new Error('RPC_URL environment variable is not set');
+  }
+
+  const response = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'eth_call',
+      params: [{
+        to: OBOL_CONTRACT_ADDRESS,
+        data: ethers.Interface.from(OBOL_CONTRACT_ABI).encodeFunctionData(method, params)
+      }, 'latest']
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const result = await response.json();
+  if (result.error) {
+    throw new Error(result.error.message || 'RPC call failed');
+  }
+
+  return result.result;
+}
 
 export const getDelegateVotes = async (delegateAddress: string): Promise<string> => {
   let retryCount = 0;
@@ -64,9 +64,8 @@ export const getDelegateVotes = async (delegateAddress: string): Promise<string>
         return '0';
       }
 
-      const { contract } = initializeProvider();
-      const votes = await contract.getVotes(delegateAddress);
-      return ethers.formatEther(votes);
+      const result = await callContract('getVotes', [delegateAddress]);
+      return ethers.formatEther(result);
     } catch (error) {
       console.error(`Error getting votes for delegate (attempt ${retryCount + 1}):`, delegateAddress, error);
       
@@ -117,8 +116,8 @@ export const getDelegatesForAddress = async (address: string): Promise<string> =
         return ethers.ZeroAddress;
       }
 
-      const { contract } = initializeProvider();
-      return await contract.delegates(address);
+      const result = await callContract('delegates', [address]);
+      return result;
     } catch (error) {
       console.error(`Error getting delegate (attempt ${retryCount + 1}):`, error);
       
