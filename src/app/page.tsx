@@ -78,15 +78,7 @@ async function DelegateContent() {
   try {
     console.log('Fetching delegates from API...');
     
-    // Construct absolute URL for Edge Runtime
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-    const apiUrl = new URL('/api/delegates', baseUrl).toString();
-    
-    console.log('Fetching from:', apiUrl);
-    
-    const res = await fetch(apiUrl, {
+    const res = await fetch('/api/delegates', {
       cache: 'no-store'
     });
     
