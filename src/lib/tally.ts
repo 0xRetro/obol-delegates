@@ -35,27 +35,23 @@ const tallyQuery = async (query: string, variables: Record<string, unknown> = {}
     url: TALLY_API_BASE_URL,
     query,
     variables,
-    apiKeyPresent: !!TALLY_API_KEY
+    apiKeyPresent: true
   });
   
   const response = await fetch(TALLY_API_BASE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apiKey': TALLY_API_KEY,
+      'Api-Key': TALLY_API_KEY,
     },
     body: JSON.stringify({
       query,
       variables,
     }),
-    cache: 'no-store',
   });
 
   if (response.status === 401) {
-    console.error('Invalid Tally API Key:', {
-      status: response.status,
-      key: TALLY_API_KEY?.substring(0, 5) + '...',
-    });
+    console.error('Invalid Tally API Key');
     throw new Error('Invalid Tally API Key - please check your TALLY_API_KEY environment variable');
   }
 
@@ -71,13 +67,9 @@ const tallyQuery = async (query: string, variables: Record<string, unknown> = {}
     throw new Error(`Tally API error: ${response.statusText}`);
   }
 
-  try {
-    const data = JSON.parse(responseText) as TallyResponse;
-    return data;
-  } catch (error) {
-    console.error('Error parsing Tally response:', error);
-    throw new Error('Invalid response format from Tally API');
-  }
+  const data = JSON.parse(responseText) as TallyResponse;
+  console.log('Parsed Tally Response:', JSON.stringify(data, null, 2));
+  return data;
 };
 
 export const getDelegates = async (): Promise<TallyDelegate[]> => {
