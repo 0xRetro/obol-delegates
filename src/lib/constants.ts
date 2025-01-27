@@ -16,6 +16,15 @@ export const OBOL_CONTRACT_ABI = [
   }
 ] as const;
 
+// Ensure environment variables are available
+if (!process.env.NEXT_PUBLIC_RPC_URL) {
+  console.error('Missing NEXT_PUBLIC_RPC_URL environment variable');
+}
+
+if (!process.env.NEXT_PUBLIC_TALLY_API_KEY) {
+  console.error('Missing NEXT_PUBLIC_TALLY_API_KEY environment variable');
+}
+
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/your-api-key';
 export const TALLY_API_KEY = process.env.NEXT_PUBLIC_TALLY_API_KEY;
 
