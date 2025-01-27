@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 import { getDelegates } from '@/lib/tally';
 import { getDelegatesWithVotes } from '@/lib/blockchain';
-import { CACHE_KEYS } from '@/lib/constants';
+import { CACHE_KEYS, CACHE_TTL } from '@/lib/constants';
 
 export const runtime = 'edge';
 
@@ -18,14 +18,21 @@ export async function GET() {
         const parsedData = JSON.parse(typeof cachedData === 'string' ? cachedData : JSON.stringify(cachedData));
         
         if (parsedData && Array.isArray(parsedData.delegates)) {
-          console.log(`Returning cached data with ${parsedData.delegates.length} delegates`);
-          return new NextResponse(JSON.stringify(parsedData), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
-            }
-          });
+          const age = Math.floor((Date.now() - parsedData.timestamp) / 1000); // age in seconds
+          console.log(`Cache age: ${age} seconds (TTL: ${CACHE_TTL.DELEGATES} seconds)`);
+          
+          if (age < CACHE_TTL.DELEGATES) {
+            console.log(`Returning cached data with ${parsedData.delegates.length} delegates`);
+            return new NextResponse(JSON.stringify(parsedData), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
+              }
+            });
+          } else {
+            console.log('Cache is stale, fetching fresh data...');
+          }
         }
       } catch (parseError) {
         console.error('Error parsing cached data:', parseError);
@@ -34,7 +41,7 @@ export async function GET() {
     }
 
     // No cached data found or couldn't parse cached data - start fetching fresh data
-    console.log('No cached data found or invalid cache, fetching fresh data...');
+    console.log('Fetching fresh data from Tally API...');
     
     // Get delegates from Tally
     console.log('Fetching delegates from Tally...');
@@ -51,14 +58,14 @@ export async function GET() {
       
       // Cache the empty result
       await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
-        ex: 60 * 60 * 24 // 24 hours
+        ex: CACHE_TTL.DELEGATES
       });
       
       return new NextResponse(JSON.stringify(emptyData), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
+          'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
         }
       });
     }
@@ -74,14 +81,14 @@ export async function GET() {
 
     // Cache the data
     await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
-      ex: 60 * 60 * 24 // 24 hours
+      ex: CACHE_TTL.DELEGATES
     });
 
     return new NextResponse(JSON.stringify(data), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
+        'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
       }
     });
   } catch (error) {
