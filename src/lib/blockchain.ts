@@ -96,7 +96,7 @@ export const getDelegateVotes = async (delegateAddress: string): Promise<string>
 // Process delegates in batches with rate limiting and retries
 export const getDelegatesWithVotes = async (delegates: Delegate[]): Promise<DelegateWithVotes[]> => {
   const results: DelegateWithVotes[] = [];
-  const batchSize = 4; // Reduced batch size for better reliability
+  const batchSize = 5; // Reduced batch size for better reliability
   
   for (let i = 0; i < delegates.length; i += batchSize) {
     const batch = delegates.slice(i, Math.min(i + batchSize, delegates.length));
