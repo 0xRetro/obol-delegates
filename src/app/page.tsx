@@ -1,5 +1,3 @@
-import { getDelegates } from '@/lib/tally';
-import { getDelegatesWithVotes } from '@/lib/blockchain';
 import { Suspense } from 'react';
 import TwitterLink from '@/components/TwitterLink';
 

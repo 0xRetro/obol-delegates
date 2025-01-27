@@ -24,8 +24,6 @@ const OBOL_TOKEN_ABI = [
   }
 ] as const;
 
-let obolToken: ethers.Contract;
-
 // Initialize provider and contract
 const initializeContract = () => {
   if (!provider || !contract) {
