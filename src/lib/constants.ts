@@ -31,6 +31,6 @@ export const CACHE_KEYS = {
 
 // Cache TTL in seconds
 export const CACHE_TTL = {
-  DELEGATES: 60 * 60 * 12, // 12 hours
-  VOTING_POWER: 60 * 60 * 12, // 12 hours
+  DELEGATES: 60 * 60, // 1 hour
+  VOTING_POWER: 60 * 60, // 1 hour
 } as const; 

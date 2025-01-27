@@ -36,15 +36,14 @@ const formatLastUpdated = (timestamp: number): string => {
 // Helper to check if data needs refresh
 const needsRefresh = (timestamp: number): boolean => {
   const age = Date.now() - timestamp;
-  return age > 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+  return age > 60 * 60 * 1000; // 1 hour in milliseconds
 };
 
 // Helper to format time until next refresh
 const formatTimeUntilRefresh = (timestamp: number): string => {
-  const timeLeft = (timestamp + 12 * 60 * 60 * 1000) - Date.now();
-  const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
-  const minutesLeft = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
-  return `${hoursLeft}h ${minutesLeft}m`;
+  const timeLeft = (timestamp + 60 * 60 * 1000) - Date.now();
+  const minutesLeft = Math.floor(timeLeft / (60 * 1000));
+  return `${minutesLeft}m`;
 };
 
 // Loading component
@@ -86,7 +85,7 @@ async function DelegateContent() {
     
     const res = await fetch(url, {
       next: {
-        revalidate: 60 * 60 * 12 // 12 hours
+        revalidate: 60 * 60 // 1 hour
       }
     });
     
