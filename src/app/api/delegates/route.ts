@@ -14,31 +14,32 @@ export async function GET() {
     if (cachedData) {
       console.log('Found cached delegate data');
       try {
-        // Handle both string and object cases
-        const parsedData = typeof cachedData === 'string' 
-          ? JSON.parse(cachedData)
-          : cachedData;
+        // Always parse the cached data as it's stored as a string
+        const parsedData = JSON.parse(typeof cachedData === 'string' ? cachedData : JSON.stringify(cachedData));
         
-        console.log(`Returning cached data with ${parsedData.delegates?.length || 0} delegates`);
-        return new NextResponse(JSON.stringify(parsedData), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
-          }
-        });
+        if (parsedData && Array.isArray(parsedData.delegates)) {
+          console.log(`Returning cached data with ${parsedData.delegates.length} delegates`);
+          return new NextResponse(JSON.stringify(parsedData), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
+            }
+          });
+        }
       } catch (parseError) {
         console.error('Error parsing cached data:', parseError);
+        // Continue to fetch fresh data if parse fails
       }
     }
 
     // No cached data found or couldn't parse cached data - start fetching fresh data
-    console.log('No cached data found, fetching fresh data...');
+    console.log('No cached data found or invalid cache, fetching fresh data...');
     
     // Get delegates from Tally
     console.log('Fetching delegates from Tally...');
     const delegates = await getDelegates();
-    console.log('Delegates from Tally:', JSON.stringify(delegates, null, 2));
+    console.log(`Found ${delegates?.length || 0} delegates from Tally`);
     
     if (!delegates || delegates.length === 0) {
       console.log('No delegates found from Tally');
@@ -48,16 +49,16 @@ export async function GET() {
         totalVotes: 0
       };
       
-      // Cache the empty result to prevent constant retries
+      // Cache the empty result
       await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
-        ex: 60 * 5 // Cache empty results for 5 minutes
+        ex: 60 * 60 * 24 // 24 hours
       });
       
       return new NextResponse(JSON.stringify(emptyData), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
+          'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
         }
       });
     }
@@ -73,14 +74,14 @@ export async function GET() {
 
     // Cache the data
     await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
-      ex: 60 * 5 // 5 minutes
+      ex: 60 * 60 * 24 // 24 hours
     });
 
     return new NextResponse(JSON.stringify(data), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60'
+        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=60'
       }
     });
   } catch (error) {

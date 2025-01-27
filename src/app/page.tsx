@@ -72,7 +72,6 @@ function LoadingState() {
 // Add the correct page configuration
 export const runtime = 'edge';
 export const preferredRegion = 'iad1';
-export const dynamic = 'force-dynamic';
 
 // Main content component
 async function DelegateContent() {
@@ -85,7 +84,9 @@ async function DelegateContent() {
     const url = `${protocol}://${host}/api/delegates`;
     
     const res = await fetch(url, {
-      cache: 'no-store'
+      next: {
+        revalidate: 60 * 60 * 24 // 24 hours
+      }
     });
     
     if (!res.ok) {
@@ -95,6 +96,7 @@ async function DelegateContent() {
     const data = await res.json();
     
     if (!data || !Array.isArray(data.delegates)) {
+      console.error('Invalid data format:', data);
       throw new Error('Invalid data format received');
     }
 
@@ -104,7 +106,7 @@ async function DelegateContent() {
     const sortedDelegates = data.delegates
       .map((delegate: { address: string; ens?: string; votes: string }) => ({
         ...delegate,
-        percentage: ((Number(delegate.votes) / data.totalVotes) * 100).toFixed(2)
+        percentage: data.totalVotes > 0 ? ((Number(delegate.votes) / data.totalVotes) * 100).toFixed(2) : '0.00'
       }))
       .sort((a: { votes: string }, b: { votes: string }) => Number(b.votes) - Number(a.votes))
       .map((delegate: { address: string; ens?: string; votes: string; percentage: string }, index: number) => ({
