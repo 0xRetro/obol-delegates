@@ -4,7 +4,6 @@ import { getDelegates } from '@/lib/tally';
 import { getDelegatesWithVotes } from '@/lib/blockchain';
 import { CACHE_KEYS, CACHE_TTL } from '@/lib/constants';
 
-export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
