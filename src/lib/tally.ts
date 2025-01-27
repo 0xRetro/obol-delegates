@@ -26,24 +26,34 @@ interface TallyResponse {
 }
 
 const tallyQuery = async (query: string, variables: Record<string, unknown> = {}) => {
+  if (!TALLY_API_KEY) {
+    console.error('Tally API Key is not configured');
+    throw new Error('TALLY_API_KEY environment variable is not set');
+  }
+
   console.log('Tally API Request:', {
     url: TALLY_API_BASE_URL,
     query,
     variables,
-    apiKeyPresent: !!TALLY_API_KEY
+    apiKeyPresent: true
   });
   
   const response = await fetch(TALLY_API_BASE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Api-Key': TALLY_API_KEY || '',
+      'Api-Key': TALLY_API_KEY,
     },
     body: JSON.stringify({
       query,
       variables,
     }),
   });
+
+  if (response.status === 401) {
+    console.error('Invalid Tally API Key');
+    throw new Error('Invalid Tally API Key - please check your TALLY_API_KEY environment variable');
+  }
 
   const responseText = await response.text();
   console.log('Raw Tally Response:', responseText);

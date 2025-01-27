@@ -3,7 +3,7 @@
 export default function TwitterLink() {
   return (
     <a
-      href="https://twitter.com/0xRetro_"
+      href="https://twitter.com/0xRetro"
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
