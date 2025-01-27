@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Obol Delegates
 
-## Getting Started
+This project integrates with Tally's API to fetch and display delegate information for the Obol Collective.
 
-First, run the development server:
+## Tally API Integration Notes
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+### Important IDs
+- Obol Contract Address: `0x0B010000b7624eb9B3DfBC279673C76E9D29D5F7`
+- Obol Organization ID: `2413388957975839812`
+- Organization Name: "Obol Collective"
+
+### API Query Structure
+
+To fetch delegates, we need to:
+1. Query using the organization ID, not the governor contract address
+2. Use the correct GraphQL query structure with inline fragments
+3. Handle pagination appropriately
+
+Example working query:
+```graphql
+query GetDelegates {
+  delegates(input: { 
+    filters: { 
+      organizationId: "2413388957975839812" 
+    }
+  }) {
+    nodes {
+      ... on Delegate {
+        id
+        account {
+          address
+          ens
+        }
+        delegatorsCount
+      }
+    }
+  }
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Delegate Data Structure
+Each delegate contains:
+- `id`: Unique identifier
+- `account`: 
+  - `address`: Ethereum address
+  - `ens`: ENS name (if available)
+- `delegatorsCount`: Number of delegators
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Testing API Queries
+You can test queries using curl:
+```bash
+curl -X POST 'https://api.tally.xyz/query' \
+-H 'Content-Type: application/json' \
+-H 'Api-Key: YOUR_API_KEY' \
+-d '{"query": "YOUR_QUERY"}'
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Important Notes
+1. The Tally API requires authentication via an API key in the headers
+2. The organization exists but shows no governorIds in the API
+3. Delegates can be queried directly through the organization ID
+4. Some delegates have ENS names, others don't
+5. Currently, all delegates show 0 delegators
 
-## Learn More
+## Development
 
-To learn more about Next.js, take a look at the following resources:
+### Environment Variables
+```
+NEXT_PUBLIC_RPC_URL="Your Ethereum RPC URL"
+TALLY_API_KEY="Your Tally API Key"
+KV_REST_API_URL="Your Redis URL"
+KV_REST_API_TOKEN="Your Redis Token"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Getting Started
+1. Clone the repository
+2. Copy `.env.example` to `.env.local` and fill in your values
+3. Install dependencies: `npm install`
+4. Run the development server: `npm run dev`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+[Add your license information here]
