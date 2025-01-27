@@ -69,19 +69,19 @@ function LoadingState() {
   );
 }
 
+// Add the correct page configuration
+export const runtime = 'edge';
+export const preferredRegion = 'iad1';
+
 // Main content component
 async function DelegateContent() {
   try {
     console.log('Fetching delegates from API...');
     
-    // Use URL constructor to ensure valid URL
-    const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-    const host = process.env.VERCEL_URL || 'localhost:3000';
-    const url = new URL('/api/delegates', `${protocol}://${host}`);
-    
-    console.log('Fetching from:', url.toString());
-    
-    const res = await fetch(url, { 
+    const res = await fetch(new URL('/api/delegates', process.env.VERCEL_URL ? 
+      `https://${process.env.VERCEL_URL}` : 
+      'http://localhost:3000'
+    ).toString(), {
       cache: 'no-store'
     });
     
