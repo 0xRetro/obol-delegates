@@ -12,16 +12,6 @@ interface DelegateWithVotes extends Delegate {
   percentage: string;
 }
 
-interface CachedData {
-  timestamp: number;
-  delegates: Array<{
-    address: string;
-    ens?: string;
-    votes: string;
-  }>;
-  totalVotes: number;
-}
-
 // Helper to format numbers with commas
 const formatNumber = (num: number): string => {
   return new Intl.NumberFormat('en-US', { 
