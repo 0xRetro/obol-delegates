@@ -5,6 +5,7 @@ import { CACHE_KEYS } from './constants';
 interface TallyDelegate {
   address: string;
   ens?: string;
+  name?: string;
 }
 
 interface TallyResponse {
@@ -14,6 +15,7 @@ interface TallyResponse {
         account: {
           address: string;
           ens: string;
+          name: string;
         };
       }>;
       pageInfo: {
@@ -91,6 +93,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
             account {
               address
               ens
+              name
             }
           }
         }
@@ -141,7 +144,8 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
       const pageDelegates = response.data.delegates.nodes.map(delegate => {
         const delegateData = {
           address: delegate.account.address,
-          ens: delegate.account.ens || undefined
+          ens: delegate.account.ens || undefined,
+          name: delegate.account.name || undefined
         };
         console.log('Processed delegate:', delegateData);
         return delegateData;

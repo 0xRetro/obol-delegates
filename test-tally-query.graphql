@@ -1,0 +1,47 @@
+query GetDelegates {
+  delegates(input: { 
+    filters: { 
+      organizationId: "2413388957975839812"
+    }
+  }) {
+    nodes {
+      ... on Delegate {
+        id
+        account {
+          address
+          ens
+          profileName
+          biography
+          twitter
+          discord
+          github
+        }
+        delegatorsCount
+        votingPower
+        proposalsVoted
+        proposalsCreated
+        firstVoteTime
+        lastVoteTime
+        votes {
+          nodes {
+            proposal {
+              id
+              title
+            }
+            support
+            weight
+            reason
+          }
+        }
+        proposals {
+          nodes {
+            id
+            title
+            description
+            status
+          }
+        }
+      }
+    }
+  }
+} 

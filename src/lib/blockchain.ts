@@ -25,6 +25,7 @@ type ContractParam = string | number | boolean | ContractParam[];
 interface Delegate {
   address: string;
   ens?: string;
+  name?: string;
 }
 
 interface DelegateWithVotes extends Delegate {
@@ -105,6 +106,7 @@ export const getDelegatesWithVotes = async (delegates: Delegate[]): Promise<Dele
       batch.map(async delegate => ({
         address: delegate.address,
         ens: delegate.ens,
+        name: delegate.name,
         votes: await getDelegateVotes(delegate.address)
       }))
     );

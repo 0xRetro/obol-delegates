@@ -4,6 +4,7 @@ import TwitterLink from '@/components/TwitterLink';
 interface Delegate {
   address: string;
   ens?: string;
+  name?: string;
 }
 
 interface DelegateWithVotes extends Delegate {
@@ -234,7 +235,12 @@ async function DelegateContent() {
                         #{delegate.rank}
                       </div>
                       <div>
-                        <div className="font-mono text-sm break-all">
+                        {delegate.name && (
+                          <div className="text-sm font-medium mb-1">
+                            {delegate.name}
+                          </div>
+                        )}
+                        <div className="font-mono text-sm break-all text-gray-600">
                           {delegate.address}
                         </div>
                         {delegate.ens && (

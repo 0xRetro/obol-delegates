@@ -10,54 +10,84 @@ export const dynamic = 'force-dynamic'; // Ensure the route is always dynamic
 export async function GET() {
   try {
     console.log('API Route: Checking Redis cache...');
-    // Check for cached data
     const cachedData = await redis.get<string>(CACHE_KEYS.DELEGATES);
-    
+    let shouldFetchFresh = true;
+    let parsedCache = null;
+
     if (cachedData) {
       console.log('API Route: Found cached delegate data');
       try {
-        // Always parse the cached data as it's stored as a string
-        const parsedData = JSON.parse(typeof cachedData === 'string' ? cachedData : JSON.stringify(cachedData));
+        parsedCache = JSON.parse(typeof cachedData === 'string' ? cachedData : JSON.stringify(cachedData));
         
-        if (parsedData && Array.isArray(parsedData.delegates)) {
-          const age = Math.floor((Date.now() - parsedData.timestamp) / 1000); // age in seconds
+        if (parsedCache && Array.isArray(parsedCache.delegates)) {
+          const age = Math.floor((Date.now() - parsedCache.timestamp) / 1000); // age in seconds
           console.log(`API Route: Cache age: ${age} seconds (TTL: ${CACHE_TTL.DELEGATES} seconds)`);
           
           if (age < CACHE_TTL.DELEGATES) {
-            console.log(`API Route: Returning cached data with ${parsedData.delegates.length} delegates`);
-            return new NextResponse(JSON.stringify(parsedData), {
-              status: 200,
-              headers: {
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache, no-store, must-revalidate'
-              }
-            });
+            shouldFetchFresh = false;
+            console.log(`API Route: Using valid cache with ${parsedCache.delegates.length} delegates and ${parsedCache.totalVotes} total votes`);
           } else {
-            console.log('API Route: Cache is stale, fetching fresh data...');
+            console.log('API Route: Cache is stale, will fetch fresh data');
           }
         }
       } catch (parseError) {
         console.error('API Route: Error parsing cached data:', parseError);
+        shouldFetchFresh = true;
       }
+    } else {
+      console.log('API Route: No cache found, will fetch fresh data');
     }
 
-    console.log('API Route: Fetching fresh data from Tally API...');
-    const delegates = await getDelegates();
-    console.log(`API Route: Found ${delegates?.length || 0} delegates from Tally`);
-    
-    if (!delegates || delegates.length === 0) {
-      console.log('API Route: No delegates found from Tally');
-      const emptyData = { 
-        timestamp: Date.now(),
-        delegates: [],
-        totalVotes: 0
-      };
+    if (shouldFetchFresh) {
+      console.log('API Route: Fetching fresh data from Tally API...');
+      const delegates = await getDelegates();
+      console.log(`API Route: Found ${delegates?.length || 0} delegates from Tally`);
       
-      await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
+      if (!delegates || delegates.length === 0) {
+        console.log('API Route: No delegates found from Tally');
+        const emptyData = { 
+          timestamp: Date.now(),
+          delegates: [],
+          totalVotes: 0
+        };
+        
+        await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
+          ex: CACHE_TTL.DELEGATES
+        });
+        
+        return new NextResponse(JSON.stringify(emptyData), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        });
+      }
+
+      console.log('API Route: Fetching voting power from blockchain...');
+      const delegatesWithVotes = await getDelegatesWithVotes(delegates);
+      
+      const data = {
+        timestamp: Date.now(),
+        delegates: delegatesWithVotes,
+        totalVotes: delegatesWithVotes.reduce((sum, d) => sum + parseFloat(d.votes), 0)
+      };
+
+      console.log(`API Route: Caching new data with ${data.delegates.length} delegates and ${data.totalVotes} total votes`);
+      await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
         ex: CACHE_TTL.DELEGATES
       });
-      
-      return new NextResponse(JSON.stringify(emptyData), {
+
+      return new NextResponse(JSON.stringify(data), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
+      });
+    } else {
+      // Return valid cached data without calling blockchain
+      return new NextResponse(JSON.stringify(parsedCache), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
@@ -65,28 +95,6 @@ export async function GET() {
         }
       });
     }
-
-    console.log('API Route: Fetching voting power for delegates...');
-    const delegatesWithVotes = await getDelegatesWithVotes(delegates);
-    
-    const data = {
-      timestamp: Date.now(),
-      delegates: delegatesWithVotes,
-      totalVotes: delegatesWithVotes.reduce((sum, d) => sum + parseFloat(d.votes), 0)
-    };
-
-    console.log('API Route: Caching new data...');
-    await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
-      ex: CACHE_TTL.DELEGATES
-    });
-
-    return new NextResponse(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
-      }
-    });
   } catch (error) {
     console.error('API Route: Error:', error);
     return new NextResponse(JSON.stringify({ 
