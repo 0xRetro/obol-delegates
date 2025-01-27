@@ -5,58 +5,54 @@ import { getDelegatesWithVotes } from '@/lib/blockchain';
 import { CACHE_KEYS, CACHE_TTL } from '@/lib/constants';
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic'; // Ensure the route is always dynamic
 
 export async function GET() {
   try {
+    console.log('API Route: Checking Redis cache...');
     // Check for cached data
     const cachedData = await redis.get<string>(CACHE_KEYS.DELEGATES);
     
     if (cachedData) {
-      console.log('Found cached delegate data');
+      console.log('API Route: Found cached delegate data');
       try {
         // Always parse the cached data as it's stored as a string
         const parsedData = JSON.parse(typeof cachedData === 'string' ? cachedData : JSON.stringify(cachedData));
         
         if (parsedData && Array.isArray(parsedData.delegates)) {
           const age = Math.floor((Date.now() - parsedData.timestamp) / 1000); // age in seconds
-          console.log(`Cache age: ${age} seconds (TTL: ${CACHE_TTL.DELEGATES} seconds)`);
+          console.log(`API Route: Cache age: ${age} seconds (TTL: ${CACHE_TTL.DELEGATES} seconds)`);
           
           if (age < CACHE_TTL.DELEGATES) {
-            console.log(`Returning cached data with ${parsedData.delegates.length} delegates`);
+            console.log(`API Route: Returning cached data with ${parsedData.delegates.length} delegates`);
             return new NextResponse(JSON.stringify(parsedData), {
               status: 200,
               headers: {
                 'Content-Type': 'application/json',
-                'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
               }
             });
           } else {
-            console.log('Cache is stale, fetching fresh data...');
+            console.log('API Route: Cache is stale, fetching fresh data...');
           }
         }
       } catch (parseError) {
-        console.error('Error parsing cached data:', parseError);
-        // Continue to fetch fresh data if parse fails
+        console.error('API Route: Error parsing cached data:', parseError);
       }
     }
 
-    // No cached data found or couldn't parse cached data - start fetching fresh data
-    console.log('Fetching fresh data from Tally API...');
-    
-    // Get delegates from Tally
-    console.log('Fetching delegates from Tally...');
+    console.log('API Route: Fetching fresh data from Tally API...');
     const delegates = await getDelegates();
-    console.log(`Found ${delegates?.length || 0} delegates from Tally`);
+    console.log(`API Route: Found ${delegates?.length || 0} delegates from Tally`);
     
     if (!delegates || delegates.length === 0) {
-      console.log('No delegates found from Tally');
+      console.log('API Route: No delegates found from Tally');
       const emptyData = { 
         timestamp: Date.now(),
         delegates: [],
         totalVotes: 0
       };
       
-      // Cache the empty result
       await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(emptyData), {
         ex: CACHE_TTL.DELEGATES
       });
@@ -65,12 +61,12 @@ export async function GET() {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
         }
       });
     }
 
-    // Get voting power for each delegate
+    console.log('API Route: Fetching voting power for delegates...');
     const delegatesWithVotes = await getDelegatesWithVotes(delegates);
     
     const data = {
@@ -79,7 +75,7 @@ export async function GET() {
       totalVotes: delegatesWithVotes.reduce((sum, d) => sum + parseFloat(d.votes), 0)
     };
 
-    // Cache the data
+    console.log('API Route: Caching new data...');
     await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(data), {
       ex: CACHE_TTL.DELEGATES
     });
@@ -88,18 +84,19 @@ export async function GET() {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': `public, s-maxage=${CACHE_TTL.DELEGATES}, stale-while-revalidate=60`
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
       }
     });
   } catch (error) {
-    console.error('Error in delegates API:', error);
+    console.error('API Route: Error:', error);
     return new NextResponse(JSON.stringify({ 
       error: 'Failed to fetch delegates',
       details: error instanceof Error ? error.message : 'Unknown error'
     }), { 
       status: 500,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
       }
     });
   }
@@ -107,13 +104,30 @@ export async function GET() {
 
 export async function DELETE() {
   try {
+    console.log('API Route: Clearing Redis cache...');
     await redis.del(CACHE_KEYS.DELEGATES);
-    return NextResponse.json({ message: 'Cache cleared' });
+    console.log('API Route: Cache cleared successfully');
+    return new NextResponse(JSON.stringify({ 
+      message: 'Cache cleared',
+      timestamp: Date.now()
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
+    });
   } catch (error) {
-    console.error('Error clearing cache:', error);
-    return NextResponse.json(
-      { error: 'Failed to clear cache' },
-      { status: 500 }
-    );
+    console.error('API Route: Error clearing cache:', error);
+    return new NextResponse(JSON.stringify({
+      error: 'Failed to clear cache',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }), { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
+    });
   }
 } 
