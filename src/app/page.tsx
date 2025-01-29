@@ -235,41 +235,36 @@ async function DelegateContent() {
                   className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
                 >
                   <div className="flex justify-between items-start">
-                    <div className="flex gap-4 items-center">
-                      <div className="text-lg font-semibold text-gray-500 w-8 self-center">
+                    <div className="flex gap-4">
+                      <div className="text-lg font-semibold text-gray-500 w-8">
                         #{delegate.rank}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
+                        <a 
+                          href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block hover:opacity-80 transition-opacity"
+                        >
                           {delegate.name && (
-                            <div className="text-sm font-medium">
+                            <div className="text-sm font-medium mb-1">
                               {delegate.name}
                             </div>
                           )}
+                          <div className="font-mono text-sm break-all text-gray-600">
+                            {delegate.address}
+                          </div>
                           {delegate.ens && (
-                            <div className="text-sm text-blue-600">
+                            <div className="text-sm text-blue-600 mt-1">
                               {delegate.ens}
                             </div>
                           )}
-                        </div>
-                        <div className="font-mono text-sm break-all text-gray-600">
-                          {delegate.address}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <a 
-                            href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
-                          >
-                            Delegate Profile
-                          </a>
-                          {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
-                            <div className="text-sm text-gray-500 mt-2 italic">
-                              made with ❤️ by retro
-                            </div>
-                          )}
-                        </div>
+                        </a>
+                        {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
+                          <div className="text-sm text-gray-500 mt-1 italic">
+                            website made by retro ❤️
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
