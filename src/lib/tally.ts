@@ -27,51 +27,106 @@ interface TallyResponse {
   };
 }
 
-const tallyQuery = async (query: string, variables: Record<string, unknown> = {}) => {
+// Rate limiting configuration
+const RATE_LIMIT = {
+  requestsPerMinute: 15, // More conservative limit
+  timeWindow: 60 * 1000, // 1 minute in milliseconds
+  maxRetries: 3,
+  initialRetryDelay: 5000, // 5 seconds
+};
+
+// Rate limiting state
+let requestTimestamps: number[] = [];
+
+const checkRateLimit = () => {
+  const now = Date.now();
+  // Remove timestamps older than our time window
+  requestTimestamps = requestTimestamps.filter(
+    timestamp => now - timestamp < RATE_LIMIT.timeWindow
+  );
+  
+  if (requestTimestamps.length >= RATE_LIMIT.requestsPerMinute) {
+    const oldestRequest = requestTimestamps[0];
+    const waitTime = RATE_LIMIT.timeWindow - (now - oldestRequest);
+    return waitTime > 0 ? waitTime : 0;
+  }
+  
+  return 0;
+};
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const tallyQuery = async (query: string, variables: Record<string, unknown> = {}, retryCount = 0) => {
   if (!TALLY_API_KEY) {
     console.error('Tally API Key is not configured');
     throw new Error('TALLY_API_KEY environment variable is not set');
   }
 
-  console.log('Tally API Request:', {
-    url: TALLY_API_BASE_URL,
-    query,
-    variables,
-    apiKeyPresent: true
-  });
-  
-  const response = await fetch(TALLY_API_BASE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Api-Key': TALLY_API_KEY,
-    },
-    body: JSON.stringify({
+  // Check rate limit
+  const waitTime = checkRateLimit();
+  if (waitTime > 0) {
+    console.log(`Rate limit reached. Waiting ${waitTime}ms before next request`);
+    await wait(waitTime);
+  }
+
+  try {
+    // Add current request to timestamps
+    requestTimestamps.push(Date.now());
+
+    console.log('Tally API Request:', {
+      url: TALLY_API_BASE_URL,
       query,
       variables,
-    }),
-  });
-
-  if (response.status === 401) {
-    console.error('Invalid Tally API Key');
-    throw new Error('Invalid Tally API Key - please check your TALLY_API_KEY environment variable');
-  }
-
-  const responseText = await response.text();
-  console.log('Raw Tally Response:', responseText);
-
-  if (!response.ok) {
-    console.error('Tally API Error:', {
-      status: response.status,
-      statusText: response.statusText,
-      response: responseText
+      apiKeyPresent: true
     });
-    throw new Error(`Tally API error: ${response.statusText}`);
-  }
+    
+    const response = await fetch(TALLY_API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Key': TALLY_API_KEY,
+      },
+      body: JSON.stringify({
+        query,
+        variables,
+      }),
+    });
 
-  const data = JSON.parse(responseText) as TallyResponse;
-  console.log('Parsed Tally Response:', JSON.stringify(data, null, 2));
-  return data;
+    if (response.status === 401) {
+      console.error('Invalid Tally API Key');
+      throw new Error('Invalid Tally API Key - please check your TALLY_API_KEY environment variable');
+    }
+
+    const responseText = await response.text();
+
+    if (response.status === 429 && retryCount < RATE_LIMIT.maxRetries) {
+      const retryDelay = RATE_LIMIT.initialRetryDelay * Math.pow(2, retryCount);
+      console.log(`Rate limit hit, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${RATE_LIMIT.maxRetries})`);
+      await wait(retryDelay);
+      return tallyQuery(query, variables, retryCount + 1);
+    }
+
+    if (!response.ok) {
+      console.error('Tally API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        response: responseText
+      });
+      throw new Error(`Tally API error: ${response.statusText}`);
+    }
+
+    const data = JSON.parse(responseText) as TallyResponse;
+    console.log('Parsed Tally Response:', JSON.stringify(data, null, 2));
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Too Many Requests') && retryCount < RATE_LIMIT.maxRetries) {
+      const retryDelay = RATE_LIMIT.initialRetryDelay * Math.pow(2, retryCount);
+      console.log(`Rate limit hit, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${RATE_LIMIT.maxRetries})`);
+      await wait(retryDelay);
+      return tallyQuery(query, variables, retryCount + 1);
+    }
+    throw error;
+  }
 };
 
 export const getDelegates = async (): Promise<TallyDelegate[]> => {

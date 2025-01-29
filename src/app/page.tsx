@@ -240,31 +240,36 @@ async function DelegateContent() {
                         #{delegate.rank}
                       </div>
                       <div>
-                        <a 
-                          href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block hover:opacity-80 transition-opacity"
-                        >
+                        <div className="flex items-center gap-2 mb-1">
                           {delegate.name && (
-                            <div className="text-sm font-medium mb-1">
+                            <div className="text-sm font-medium">
                               {delegate.name}
                             </div>
                           )}
-                          <div className="font-mono text-sm break-all text-gray-600">
-                            {delegate.address}
-                          </div>
                           {delegate.ens && (
-                            <div className="text-sm text-blue-600 mt-1">
+                            <div className="text-sm text-blue-600">
                               {delegate.ens}
                             </div>
                           )}
-                        </a>
-                        {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
-                          <div className="text-sm text-gray-500 mt-1 italic">
-                            website made by retro ❤️
-                          </div>
-                        )}
+                        </div>
+                        <div className="font-mono text-sm break-all text-gray-600">
+                          {delegate.address}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <a 
+                            href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
+                          >
+                            Go to delegate profile
+                          </a>
+                          {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
+                            <div className="text-sm text-gray-500 mt-2 italic">
+                              made with ❤️ by retro
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
