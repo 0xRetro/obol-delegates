@@ -235,29 +235,41 @@ async function DelegateContent() {
                   className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
                 >
                   <div className="flex justify-between items-start">
-                    <div className="flex gap-4">
-                      <div className="text-lg font-semibold text-gray-500 w-8">
+                    <div className="flex gap-4 items-center">
+                      <div className="text-lg font-semibold text-gray-500 w-8 self-center">
                         #{delegate.rank}
                       </div>
                       <div>
-                        {delegate.name && (
-                          <div className="text-sm font-medium mb-1">
-                            {delegate.name}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 mb-1">
+                          {delegate.name && (
+                            <div className="text-sm font-medium">
+                              {delegate.name}
+                            </div>
+                          )}
+                          {delegate.ens && (
+                            <div className="text-sm text-blue-600">
+                              {delegate.ens}
+                            </div>
+                          )}
+                        </div>
                         <div className="font-mono text-sm break-all text-gray-600">
                           {delegate.address}
                         </div>
-                        {delegate.ens && (
-                          <div className="text-sm text-blue-600 mt-1">
-                            {delegate.ens}
-                          </div>
-                        )}
-                        {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
-                          <div className="text-sm text-gray-500 mt-1 italic">
-                            website made by retro ❤️
-                          </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                          <a 
+                            href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
+                          >
+                            Delegate Profile
+                          </a>
+                          {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
+                            <div className="text-sm text-gray-500 mt-2 italic">
+                              made with ❤️ by retro
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -300,20 +312,8 @@ export default function Home() {
         <DelegateContent />
       </Suspense>
 
-      {/* Fixed position delegate banner */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-stretch gap-2">
-        <a 
-          href="https://www.tally.xyz/gov/obol/delegate/0xretro.eth"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-3 bg-[#2FE4AB] text-gray-800 rounded-lg shadow-lg hover:bg-[#29cd99] transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-          <span>Delegate to 0xRetro.eth</span>
-          <span className="text-xl">👨‍🚀</span>
-        </a>
+      {/* Fixed position banner */}
+      <div className="fixed bottom-4 right-4 z-50">
         <div className="bg-[#2FE4AB] rounded-lg shadow-lg hover:bg-[#29cd99] transition-colors">
           <TwitterLink />
         </div>
