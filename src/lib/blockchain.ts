@@ -20,20 +20,18 @@ const isRetryableError = (error: Error | unknown): boolean => {
   );
 };
 
-type ContractParam = string | number | boolean | ContractParam[];
-
-interface Delegate {
-  address: string;
-  ens?: string;
-  name?: string;
-}
-
-interface DelegateWithVotes extends Delegate {
-  votes: string;
+interface DelegationEvent {
+  blockNumber: number;
+  transactionHash: string;
+  delegator: string;
+  toDelegate: string;
+  fromDelegate: string;
+  amount: string;
+  timestamp: number;
 }
 
 // Make a direct JSON-RPC call
-async function callContract(method: string, params: ContractParam[]): Promise<string> {
+async function callContract(method: string, params: any[]): Promise<any> {
   if (!RPC_URL) {
     throw new Error('RPC_URL environment variable is not set');
   }
@@ -46,11 +44,8 @@ async function callContract(method: string, params: ContractParam[]): Promise<st
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: Date.now(),
-      method: 'eth_call',
-      params: [{
-        to: OBOL_CONTRACT_ADDRESS,
-        data: ethers.Interface.from(OBOL_CONTRACT_ABI).encodeFunctionData(method, params)
-      }, 'latest']
+      method,
+      params
     }),
   });
 
@@ -66,23 +61,25 @@ async function callContract(method: string, params: ContractParam[]): Promise<st
   return result.result;
 }
 
-export const getDelegateVotes = async (delegateAddress: string): Promise<string> => {
+/**
+ * Get delegation events from a specific block range
+ * This will be replaced with Alchemy-specific implementation
+ */
+export const getDelegationEvents = async (fromBlock: number, toBlock: number): Promise<DelegationEvent[]> => {
   let retryCount = 0;
 
   while (retryCount < MAX_RETRIES) {
     try {
-      if (!ethers.isAddress(delegateAddress)) {
-        console.error('Invalid delegate address:', delegateAddress);
-        return '0';
-      }
-
-      const result = await callContract('getVotes', [delegateAddress]);
-      return ethers.formatEther(result);
+      // This is a placeholder - we'll implement the actual Alchemy API call
+      // to get DelegateVotesChanged events
+      console.log(`Fetching delegation events from block ${fromBlock} to ${toBlock}`);
+      
+      return [];
     } catch (error) {
-      console.error(`Error getting votes for delegate (attempt ${retryCount + 1}):`, delegateAddress, error);
+      console.error(`Error fetching delegation events (attempt ${retryCount + 1}):`, error);
       
       if (!isRetryableError(error) || retryCount === MAX_RETRIES - 1) {
-        return '0';
+        throw error;
       }
 
       await delay(retryCount);
@@ -90,55 +87,45 @@ export const getDelegateVotes = async (delegateAddress: string): Promise<string>
     }
   }
 
-  return '0';
+  throw new Error('Max retries exceeded fetching delegation events');
 };
 
-// Process delegates in batches with rate limiting and retries
-export const getDelegatesWithVotes = async (delegates: Delegate[]): Promise<DelegateWithVotes[]> => {
-  const results: DelegateWithVotes[] = [];
-  const batchSize = 5; // Reduced batch size for better reliability
-  
-  for (let i = 0; i < delegates.length; i += batchSize) {
-    const batch = delegates.slice(i, Math.min(i + batchSize, delegates.length));
-    console.log(`Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(delegates.length/batchSize)}`);
-    
-    const batchResults = await Promise.all(
-      batch.map(async delegate => ({
-        address: delegate.address,
-        ens: delegate.ens,
-        name: delegate.name,
-        votes: await getDelegateVotes(delegate.address)
-      }))
-    );
-    
-    results.push(...batchResults);
-    
-    // Only delay if there are more batches to process
-    if (i + batchSize < delegates.length) {
-      await delay(0); // Base delay between batches
+/**
+ * Calculate total votes for a delegate based on events
+ * This will be implemented once we have the events stored
+ */
+export const calculateDelegateVotes = (delegateAddress: string, events: DelegationEvent[]): string => {
+  let totalVotes = ethers.parseEther('0');
+
+  // Filter events for this delegate and calculate total
+  events.forEach(event => {
+    const amount = ethers.parseEther(event.amount);
+    if (event.toDelegate.toLowerCase() === delegateAddress.toLowerCase()) {
+      totalVotes += amount;
     }
-  }
-  
-  return results;
+    if (event.fromDelegate.toLowerCase() === delegateAddress.toLowerCase()) {
+      totalVotes -= amount;
+    }
+  });
+
+  return ethers.formatEther(totalVotes);
 };
 
-export const getDelegatesForAddress = async (address: string): Promise<string> => {
+/**
+ * Get the latest block number
+ */
+export const getLatestBlockNumber = async (): Promise<number> => {
   let retryCount = 0;
 
   while (retryCount < MAX_RETRIES) {
     try {
-      if (!ethers.isAddress(address)) {
-        console.error('Invalid address:', address);
-        return ethers.ZeroAddress;
-      }
-
-      const result = await callContract('delegates', [address]);
-      return result;
+      const result = await callContract('eth_blockNumber', []);
+      return parseInt(result, 16);
     } catch (error) {
-      console.error(`Error getting delegate (attempt ${retryCount + 1}):`, error);
+      console.error(`Error getting latest block (attempt ${retryCount + 1}):`, error);
       
       if (!isRetryableError(error) || retryCount === MAX_RETRIES - 1) {
-        return ethers.ZeroAddress;
+        throw error;
       }
 
       await delay(retryCount);
@@ -146,5 +133,5 @@ export const getDelegatesForAddress = async (address: string): Promise<string> =
     }
   }
 
-  return ethers.ZeroAddress;
+  throw new Error('Max retries exceeded getting latest block');
 }; 

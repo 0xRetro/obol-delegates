@@ -1,6 +1,5 @@
 import { TALLY_API_BASE_URL, TALLY_API_KEY } from './constants';
-import { redis } from './redis';
-import { CACHE_KEYS } from './constants';
+import { addDelegates } from './services/obolDelegates';
 
 interface TallyDelegate {
   address: string;
@@ -12,6 +11,7 @@ interface TallyResponse {
   data: {
     delegates: {
       nodes: Array<{
+        id: string;
         account: {
           address: string;
           ens: string;
@@ -29,100 +29,76 @@ interface TallyResponse {
 
 // Rate limiting configuration
 const RATE_LIMIT = {
-  requestsPerMinute: 15, // More conservative limit
-  timeWindow: 60 * 1000, // 1 minute in milliseconds
+  requestsPerSecond: 5,     // Max 5 requests per second
+  timeWindow: 1000,         // 1 second in milliseconds
   maxRetries: 3,
-  initialRetryDelay: 5000, // 5 seconds
+  initialRetryDelay: 1000,  // 1 second initial retry delay
 };
 
 // Rate limiting state
 let requestTimestamps: number[] = [];
 
-const checkRateLimit = () => {
+const checkRateLimit = async () => {
   const now = Date.now();
   // Remove timestamps older than our time window
   requestTimestamps = requestTimestamps.filter(
     timestamp => now - timestamp < RATE_LIMIT.timeWindow
   );
   
-  if (requestTimestamps.length >= RATE_LIMIT.requestsPerMinute) {
+  if (requestTimestamps.length >= RATE_LIMIT.requestsPerSecond) {
     const oldestRequest = requestTimestamps[0];
     const waitTime = RATE_LIMIT.timeWindow - (now - oldestRequest);
-    return waitTime > 0 ? waitTime : 0;
+    if (waitTime > 0) {
+      await wait(waitTime);
+    }
   }
   
-  return 0;
+  // Add current request timestamp
+  requestTimestamps.push(now);
 };
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const tallyQuery = async (query: string, variables: Record<string, unknown> = {}, retryCount = 0) => {
-  if (!TALLY_API_KEY) {
-    console.error('Tally API Key is not configured');
-    throw new Error('TALLY_API_KEY environment variable is not set');
-  }
-
-  // Check rate limit
-  const waitTime = checkRateLimit();
-  if (waitTime > 0) {
-    console.log(`Rate limit reached. Waiting ${waitTime}ms before next request`);
-    await wait(waitTime);
-  }
-
+const tallyQuery = async (query: string, variables: Record<string, unknown> = {}, retryCount = 0): Promise<TallyResponse> => {
   try {
-    // Add current request to timestamps
-    requestTimestamps.push(Date.now());
-
-    console.log('Tally API Request:', {
-      url: TALLY_API_BASE_URL,
+    await checkRateLimit();
+    
+    console.log('Making Tally API request:', {
       query,
-      variables,
-      apiKeyPresent: true
+      variables
     });
     
     const response = await fetch(TALLY_API_BASE_URL, {
       method: 'POST',
-      headers: {
+      headers: new Headers({
         'Content-Type': 'application/json',
-        'Api-Key': TALLY_API_KEY,
-      },
-      body: JSON.stringify({
-        query,
-        variables,
+        'Api-Key': TALLY_API_KEY || ''
       }),
+      body: JSON.stringify({ query, variables })
     });
 
-    if (response.status === 401) {
-      console.error('Invalid Tally API Key');
-      throw new Error('Invalid Tally API Key - please check your TALLY_API_KEY environment variable');
-    }
-
-    const responseText = await response.text();
-
-    if (response.status === 429 && retryCount < RATE_LIMIT.maxRetries) {
-      const retryDelay = RATE_LIMIT.initialRetryDelay * Math.pow(2, retryCount);
-      console.log(`Rate limit hit, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${RATE_LIMIT.maxRetries})`);
-      await wait(retryDelay);
-      return tallyQuery(query, variables, retryCount + 1);
-    }
+    const data = await response.json();
 
     if (!response.ok) {
       console.error('Tally API Error:', {
         status: response.status,
         statusText: response.statusText,
-        response: responseText
+        data: JSON.stringify(data, null, 2)
       });
-      throw new Error(`Tally API error: ${response.statusText}`);
+      throw new Error(`Tally API error: ${response.status} - ${data.errors?.[0]?.message || response.statusText}`);
     }
-
-    const data = JSON.parse(responseText) as TallyResponse;
-    console.log('Parsed Tally Response:', JSON.stringify(data, null, 2));
+    
+    if (data.errors) {
+      console.error('GraphQL Errors:', JSON.stringify(data.errors, null, 2));
+      throw new Error(`GraphQL error: ${data.errors[0].message}`);
+    }
+    
     return data;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Too Many Requests') && retryCount < RATE_LIMIT.maxRetries) {
-      const retryDelay = RATE_LIMIT.initialRetryDelay * Math.pow(2, retryCount);
-      console.log(`Rate limit hit, retrying in ${retryDelay}ms (attempt ${retryCount + 1}/${RATE_LIMIT.maxRetries})`);
-      await wait(retryDelay);
+    if (retryCount < RATE_LIMIT.maxRetries) {
+      console.log(`Retrying query (attempt ${retryCount + 1}/${RATE_LIMIT.maxRetries})...`);
+      const delay = RATE_LIMIT.initialRetryDelay * Math.pow(2, retryCount);
+      await wait(delay);
       return tallyQuery(query, variables, retryCount + 1);
     }
     throw error;
@@ -130,16 +106,6 @@ const tallyQuery = async (query: string, variables: Record<string, unknown> = {}
 };
 
 export const getDelegates = async (): Promise<TallyDelegate[]> => {
-  // Check cache first
-  const cachedData = await redis.get<string>(CACHE_KEYS.DELEGATES);
-  
-  if (cachedData) {
-    console.log('Returning cached delegates');
-    return typeof cachedData === 'string' 
-      ? JSON.parse(cachedData)
-      : cachedData;
-  }
-
   const query = `
     query GetDelegates($input: DelegatesInput!) {
       delegates(input: $input) {
@@ -161,69 +127,40 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
     }
   `;
 
-  try {
-    let allDelegates: TallyDelegate[] = [];
-    let afterCursor: string | null = null;
-    let hasMorePages = true;
-    let pageCount = 0;
+  const allDelegates: TallyDelegate[] = [];
+  let currentCursor: string | null = null;
 
-    while (hasMorePages) {
-      pageCount++;
-      console.log(`Fetching page ${pageCount} with cursor:`, afterCursor);
-      
-      const variables = {
-        input: {
-          filters: { 
-            organizationId: "2413388957975839812"
-          },
-          page: {
-            limit: 20, // API has a hard limit of 20
-            afterCursor
-          },
-          sort: {
-            isDescending: false,
-            sortBy: "id"
-          }
+  while (true) {
+    const variables = {
+      input: {
+        filters: { 
+          organizationId: "2413388957975839812"
+        },
+        page: {
+          limit: 20,
+          afterCursor: currentCursor
         }
-      };
-
-      const response = await tallyQuery(query, variables);
-      console.log('Raw delegate data:', JSON.stringify(response.data?.delegates?.nodes, null, 2));
-
-      if (!response.data?.delegates?.nodes?.length) {
-        console.log('No more delegates found');
-        hasMorePages = false;
-        break;
       }
+    };
 
-      const pageDelegates = response.data.delegates.nodes.map(delegate => {
-        const delegateData = {
-          address: delegate.account.address,
-          ens: delegate.account.ens || undefined,
-          name: delegate.account.name || undefined
-        };
-        console.log('Processed delegate:', delegateData);
-        return delegateData;
-      });
-
-      allDelegates = [...allDelegates, ...pageDelegates];
-      console.log(`Page ${pageCount} Info:`, response.data.delegates.pageInfo);
-      console.log(`Found ${pageDelegates.length} delegates on page ${pageCount}`);
-      console.log('Delegates with ENS:', pageDelegates.filter(d => d.ens).length);
-
-      // Set up cursor for next page
-      afterCursor = response.data.delegates.pageInfo.lastCursor;
+    const response = await tallyQuery(query, variables);
+    
+    const delegates = response.data.delegates.nodes.map(node => ({
+      address: node.account.address,
+      ens: node.account.ens || undefined,
+      name: node.account.name || undefined
+    }));
+    
+    allDelegates.push(...delegates);
+    
+    // Check if we've reached the end
+    if (delegates.length === 0 || !response.data.delegates.pageInfo.lastCursor || 
+        response.data.delegates.pageInfo.lastCursor === currentCursor) {
+      break;
     }
-
-    console.log(`Total delegates found across all pages: ${allDelegates.length}`);
-    console.log('Final delegate list:', JSON.stringify(allDelegates, null, 2));
-
-    // Cache the results for 5 minutes
-    await redis.set(CACHE_KEYS.DELEGATES, JSON.stringify(allDelegates), { ex: 300 });
-
-    return allDelegates;
-  } catch (error) {
-    console.error('Error in getDelegates:', error);
-    throw error;
+    
+    currentCursor = response.data.delegates.pageInfo.lastCursor;
   }
+
+  return allDelegates;
 }; 

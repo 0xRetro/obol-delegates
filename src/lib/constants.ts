@@ -19,18 +19,17 @@ export const OBOL_CONTRACT_ABI = [
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/your-api-key';
 export const TALLY_API_KEY = process.env.TALLY_API_KEY;
 
-// Tally API endpointst
+// Tally API endpoints
 export const TALLY_API_BASE_URL = 'https://api.tally.xyz/query';
 export const TALLY_GOVERNANCE_ID = 'eip155:1:0x0b010000b7624eb9b3dfbc279673c76e9d29d5f7'; // Obol governance ID
 
 // Cache keys
 export const CACHE_KEYS = {
-  DELEGATES: 'delegates',
   VOTING_POWER: 'voting-power',
+  OBOL_DELEGATES: 'obol_delegates'
 } as const;
 
 // Cache TTL in seconds
 export const CACHE_TTL = {
-  DELEGATES: 60 * 60, // 1 hour
   VOTING_POWER: 60 * 60, // 1 hour
 } as const; 

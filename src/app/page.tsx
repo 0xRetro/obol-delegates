@@ -1,10 +1,13 @@
 import { Suspense } from 'react';
 import TwitterLink from '@/components/TwitterLink';
+import { getMetrics } from '@/lib/services/obolMetrics';
+import { getVoteWeights, VoteWeight } from '@/lib/services/obolVoteWeights';
 
 interface Delegate {
   address: string;
   ens?: string;
   name?: string;
+  tallyProfile: boolean;
 }
 
 interface DelegateWithVotes extends Delegate {
@@ -86,7 +89,7 @@ async function DelegateContent() {
     const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
     const host = process.env.VERCEL_URL || 'localhost:3000';
     const timestamp = Date.now(); // Add timestamp for cache busting
-    const url = `${protocol}://${host}/api/delegates?t=${timestamp}`;
+    const url = `${protocol}://${host}/api/obol-delegates?t=${timestamp}`;
     
     const res = await fetch(url, {
       next: {
@@ -100,6 +103,7 @@ async function DelegateContent() {
     }
 
     const data = await res.json();
+    const voteWeights = await getVoteWeights();
     
     if (!data || !Array.isArray(data.delegates)) {
       console.error('Invalid data format:', data);
@@ -108,17 +112,25 @@ async function DelegateContent() {
 
     const isStale = needsRefresh(data.timestamp);
     
-    // Calculate percentages and add ranks
+    // Create a map of address to vote weight for faster lookups
+    const weightMap = new Map(voteWeights.map((w: VoteWeight) => [w.address.toLowerCase(), w.weight]));
+    
+    // Calculate percentages and add ranks using vote weights
+    const totalVotes = voteWeights.reduce((sum: number, w: VoteWeight) => sum + Number(w.weight), 0);
+    
     const sortedDelegates = data.delegates
-      .map((delegate: { address: string; ens?: string; votes: string }) => ({
+      .map((delegate: { address: string; ens?: string; name?: string; tallyProfile: boolean }) => ({
         ...delegate,
-        percentage: data.totalVotes > 0 ? ((Number(delegate.votes) / data.totalVotes) * 100).toFixed(2) : '0.00'
+        votes: weightMap.get(delegate.address.toLowerCase()) || '0.00',
+        percentage: ((Number(weightMap.get(delegate.address.toLowerCase()) || 0) / totalVotes) * 100).toFixed(2)
       }))
-      .sort((a: { votes: string }, b: { votes: string }) => Number(b.votes) - Number(a.votes))
-      .map((delegate: { address: string; ens?: string; votes: string; percentage: string }, index: number) => ({
+      .sort((a: DelegateWithVotes, b: DelegateWithVotes) => Number(b.votes) - Number(a.votes))
+      .map((delegate: DelegateWithVotes, index: number) => ({
         ...delegate,
         rank: index + 1
       }));
+
+    const metrics = await getMetrics();
 
     return (
       <div className="flex flex-col">
@@ -127,13 +139,19 @@ async function DelegateContent() {
             <h1 className="text-3xl font-bold">Obol Delegates</h1>
             <div className="flex flex-col gap-1 text-gray-600">
               <div className="text-lg">
-                Total Voting Power: {formatNumber(data.totalVotes)}
+                Total Voting Power: {metrics?.totalVotingPower ? formatNumber(Number(metrics.totalVotingPower)) : 'NaN'}
               </div>
               <div className="text-lg">
-                Total Delegates: {sortedDelegates.length}
+                Total Delegates: {metrics?.totalDelegates || 0}
               </div>
               <div className="text-lg">
-                Delegates with &gt;1%: {sortedDelegates.filter((d: { percentage: string }) => parseFloat(d.percentage) > 1).length}
+                Tally Registered Delegates: {metrics?.tallyRegisteredDelegates || 0}
+              </div>
+              <div className="text-lg">
+                Delegates with voting power: {metrics?.delegatesWithVotingPower || 0}
+              </div>
+              <div className="text-lg">
+                Delegates with &gt;1%: {metrics?.delegatesWithSignificantPower || 0}
               </div>
               <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
                 Last updated: {formatLastUpdated(data.timestamp)}
@@ -236,7 +254,7 @@ async function DelegateContent() {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex gap-4">
-                      <div className="text-lg font-semibold text-gray-500 w-8">
+                      <div className="text-lg font-semibold text-gray-500 w-16 flex items-center">
                         #{delegate.rank}
                       </div>
                       <div>
@@ -256,14 +274,16 @@ async function DelegateContent() {
                           {delegate.address}
                         </div>
                         <div className="flex items-center gap-3">
-                          <a 
-                            href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
-                          >
-                            Go to delegate profile
-                          </a>
+                          {delegate.tallyProfile && (
+                            <a 
+                              href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
+                            >
+                              Delegate Profile
+                            </a>
+                          )}
                           {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
                             <div className="text-sm text-gray-500 mt-2 italic">
                               made with ❤️ by retro
