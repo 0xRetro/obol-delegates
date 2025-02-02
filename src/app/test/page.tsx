@@ -1,22 +1,119 @@
 'use client';
 
 import { useState } from 'react';
+import { formatNumber } from '@/lib/utils';
+import { DelegationEvent } from '@/lib/types';
 
-interface MismatchResult {
-  success: boolean;
-  totalChecked: number;
-  mismatchesFound: number;
-  updatedAddresses: Array<{
+interface DelegateWithVotes {
+  address: string;
+  ens?: string;
+  name?: string;
+  tallyProfile: boolean;
+  votes: string;
+  rank: number;
+  percentage: string;
+  delegatorCount: number;
+}
+
+interface InspectResponse {
+  data: {
     address: string;
-    weight: string;
-    eventCalcWeight: string;
-  }>;
-  timestamp: number;
+    delegateInfo?: {
+      name: string | null;
+      ens: string | null;
+      tallyProfile: boolean;
+    };
+    voteWeights?: {
+      weight: string;
+      eventCalcWeight?: string;
+    };
+    delegationEvents: {
+      complete: DelegationEvent[];
+      incomplete: DelegationEvent[];
+    };
+  };
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  delegates?: T[];
+  error?: string;
+  data?: T;
+}
+
+interface MetricsResponse {
+  success: boolean;
+  metrics?: {
+    totalVotingPower: string;
+    totalDelegates: number;
+    totalDelegators: number;
+    tallyRegisteredDelegates: number;
+    tallyVotingPowerPercentage: string;
+    delegatesWithVotingPower: number;
+    delegatesWithSignificantPower: number;
+    timestamp: number;
+  };
   error?: string;
 }
 
+// Delegate card component matching main UI exactly
+function DelegateCard({ delegate }: { delegate: DelegateWithVotes }) {
+  return (
+    <div className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+      <div className="flex justify-between items-start">
+        <div className="flex gap-4">
+          <div className="text-lg font-semibold text-gray-500 w-16 flex items-center">
+            #{delegate.rank}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              {delegate.name && (
+                <div className="text-sm font-medium">
+                  {delegate.name}
+                </div>
+              )}
+              {delegate.ens && (
+                <div className="text-sm text-blue-600">
+                  {delegate.ens}
+                </div>
+              )}
+            </div>
+            <div className="font-mono text-sm break-all text-gray-600">
+              {delegate.address}
+            </div>
+            <div className="flex items-center gap-3">
+              {delegate.tallyProfile && (
+                <a 
+                  href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
+                >
+                  Delegate Profile
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-medium">Voting Power</div>
+          <div className="text-lg font-semibold">
+            {formatNumber(Number(delegate.votes))}
+          </div>
+          <div className="text-sm text-gray-500">
+            {delegate.percentage}%
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            {delegate.delegatorCount} delegator{delegate.delegatorCount !== 1 ? 's' : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TestPage() {
-  const [result, setResult] = useState<MismatchResult | null>(null);
+  const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
@@ -26,7 +123,7 @@ export default function TestPage() {
       setLoading(true);
       setError(null);
       const response = await fetch('/api/obol-delegates');
-      const data = await response.json();
+      const data: ApiResponse<DelegateWithVotes> = await response.json();
       setResult(data);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unknown error');
@@ -333,6 +430,21 @@ export default function TestPage() {
     }
   };
 
+  // Transform inspection data to match main UI delegate format
+  const transformInspectionData = (response: InspectResponse): DelegateWithVotes => {
+    const data = response.data;
+    return {
+      address: data.address,
+      name: data.delegateInfo?.name || undefined,
+      ens: data.delegateInfo?.ens || undefined,
+      tallyProfile: data.delegateInfo?.tallyProfile || false,
+      votes: data.voteWeights?.weight || '0',
+      rank: Math.floor(Math.random() * 50) + 1, // Random rank 1-50
+      percentage: '100.00', // 100% for dev
+      delegatorCount: Math.floor(Math.random() * 100) // Random number of delegators for testing
+    };
+  };
+
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold mb-4">API Test Page</h1>
@@ -519,13 +631,30 @@ export default function TestPage() {
       )}
 
       {result && (
-        <div className="mt-4">
-          <h2 className="text-xl font-semibold mb-2">Result:</h2>
-          <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-[500px]">
-            {JSON.stringify(result, null, 2)}
-          </pre>
+        <div className="mt-4 space-y-8">
+          {/* Only show delegate card for inspect address results */}
+          {isInspectResponse(result) && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Delegate Card Preview:</h2>
+              <DelegateCard delegate={transformInspectionData(result)} />
+            </div>
+          )}
+
+          <div>
+            <h2 className="text-xl font-semibold mb-2">Raw Inspection Data:</h2>
+            <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-[500px]">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+// Type guard for InspectResponse
+function isInspectResponse(response: ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse): response is InspectResponse {
+  return 'data' in response && 
+         response.data !== undefined && 
+         'address' in response.data;
 } 
