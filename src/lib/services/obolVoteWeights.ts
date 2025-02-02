@@ -15,6 +15,7 @@ export interface VoteWeight {
   weight: string;  // Formatted number string with 2 decimal places
   eventCalcWeight?: string;  // Optional calculated weight from events
   uniqueDelegators?: number;  // Number of unique delegators
+  delegatorPercent?: string;  // Percentage of total delegators this address represents
 }
 
 export interface VoteWeightComparison {
@@ -85,17 +86,28 @@ function calculateEventWeight(events: DelegationEvent[], address: string): strin
 }
 
 // Calculate vote weights from events for all addresses
-async function calculateEventWeights(): Promise<Map<string, { weight: string; uniqueDelegators: number }>> {
+async function calculateEventWeights(): Promise<Map<string, { 
+  weight: string; 
+  uniqueDelegators: number;
+  delegatorPercent: string;
+}>> {
   // Get all delegation events - explicitly include incomplete events
   const eventData = await getDelegationEvents(true);
   const allEvents = [...eventData.complete, ...eventData.incomplete];
   console.log(`Processing ${allEvents.length} total events (${eventData.complete.length} complete, ${eventData.incomplete.length} incomplete)`);
   
   // Create a map of address to total weight and unique delegators
-  const weightMap = new Map<string, { weight: string; uniqueDelegators: number }>();
+  const weightMap = new Map<string, { 
+    weight: string; 
+    uniqueDelegators: number;
+    delegatorPercent: string;
+  }>();
   
   // Create a map to track unique delegators for each delegate
   const delegatorMap = new Map<string, Set<string>>();
+  
+  // Track all unique delegators across all delegates
+  const allUniqueDelegators = new Set<string>();
   
   // Process each event to build the delegator sets
   allEvents.forEach(event => {
@@ -107,8 +119,11 @@ async function calculateEventWeights(): Promise<Map<string, { weight: string; un
         delegatorMap.set(delegateAddress, new Set());
       }
       delegatorMap.get(delegateAddress)?.add(delegatorAddress);
+      allUniqueDelegators.add(delegatorAddress);
     }
   });
+
+  const totalUniqueDelegators = allUniqueDelegators.size;
   
   // Process each unique address
   const uniqueAddresses = new Set(allEvents.map(e => e.toDelegate.toLowerCase()));
@@ -117,7 +132,15 @@ async function calculateEventWeights(): Promise<Map<string, { weight: string; un
   uniqueAddresses.forEach(address => {
     const weight = calculateEventWeight(allEvents, address);
     const uniqueDelegators = delegatorMap.get(address)?.size || 0;
-    weightMap.set(address, { weight, uniqueDelegators });
+    const delegatorPercent = totalUniqueDelegators > 0 
+      ? ((uniqueDelegators / totalUniqueDelegators) * 100).toFixed(2)
+      : '0.00';
+    
+    weightMap.set(address, { 
+      weight, 
+      uniqueDelegators,
+      delegatorPercent
+    });
   });
   
   return weightMap;
@@ -146,7 +169,8 @@ export async function updateVoteWeightsWithEvents(): Promise<void> {
       updatedWeights.push({
         ...weight,
         eventCalcWeight: eventData?.weight || '0.00',
-        uniqueDelegators: eventData?.uniqueDelegators || 0
+        uniqueDelegators: eventData?.uniqueDelegators || 0,
+        delegatorPercent: eventData?.delegatorPercent || '0.00'
       });
     });
     
@@ -157,7 +181,8 @@ export async function updateVoteWeightsWithEvents(): Promise<void> {
           address,
           weight: '0.00', // null weight since not fetched from etherscan yet
           eventCalcWeight: eventData.weight,
-          uniqueDelegators: eventData.uniqueDelegators
+          uniqueDelegators: eventData.uniqueDelegators,
+          delegatorPercent: eventData.delegatorPercent
         });
       }
     });
@@ -320,13 +345,14 @@ export async function calculateAndUpdateEventWeights(): Promise<{
     const currentWeights = await getVoteWeights();
     console.log(`Updating ${currentWeights.length} vote weight records with event calculations...`);
     
-    // Update eventCalcWeight and uniqueDelegators for each entry
+    // Update eventCalcWeight, uniqueDelegators, and delegatorPercent for each entry
     const updatedWeights = currentWeights.map(weight => {
       const eventData = eventWeightMap.get(weight.address.toLowerCase());
       return {
         ...weight,
         eventCalcWeight: eventData?.weight || '0.00',
-        uniqueDelegators: eventData?.uniqueDelegators || 0
+        uniqueDelegators: eventData?.uniqueDelegators || 0,
+        delegatorPercent: eventData?.delegatorPercent || '0.00'
       };
     });
     
@@ -337,7 +363,8 @@ export async function calculateAndUpdateEventWeights(): Promise<{
           address,
           weight: '0.00',
           eventCalcWeight: eventData.weight,
-          uniqueDelegators: eventData.uniqueDelegators
+          uniqueDelegators: eventData.uniqueDelegators,
+          delegatorPercent: eventData.delegatorPercent
         });
       }
     });
