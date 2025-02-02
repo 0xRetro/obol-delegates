@@ -13,6 +13,10 @@ interface DelegateWithVotes {
   rank: number;
   percentage: string;
   delegatorCount: number;
+<<<<<<< HEAD
+=======
+  delegatorPercent?: string;
+>>>>>>> get-delegatoooors
 }
 
 interface InspectResponse {
@@ -101,11 +105,22 @@ function DelegateCard({ delegate }: { delegate: DelegateWithVotes }) {
             {formatNumber(Number(delegate.votes))}
           </div>
           <div className="text-sm text-gray-500">
+<<<<<<< HEAD
             {delegate.percentage}%
           </div>
           <div className="text-xs text-gray-500 mt-1">
             {delegate.delegatorCount} delegator{delegate.delegatorCount !== 1 ? 's' : ''}
           </div>
+=======
+            {delegate.percentage}% of votes
+          </div>
+          {delegate.delegatorPercent && (
+            <div className="text-xs text-gray-500 mt-1">
+              {delegate.delegatorCount} delegator{delegate.delegatorCount !== 1 ? 's' : ''}
+              {delegate.delegatorPercent && ` (${delegate.delegatorPercent}% of total)`}
+            </div>
+          )}
+>>>>>>> get-delegatoooors
         </div>
       </div>
     </div>
@@ -441,7 +456,12 @@ export default function TestPage() {
       votes: data.voteWeights?.weight || '0',
       rank: Math.floor(Math.random() * 50) + 1, // Random rank 1-50
       percentage: '100.00', // 100% for dev
+<<<<<<< HEAD
       delegatorCount: Math.floor(Math.random() * 100) // Random number of delegators for testing
+=======
+      delegatorCount: Math.floor(Math.random() * 100), // Random number of delegators for testing
+      delegatorPercent: Math.random().toFixed(2) // Random percentage for testing
+>>>>>>> get-delegatoooors
     };
   };
 
