@@ -1,11 +1,10 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getDelegationEvents } from '@/lib/services/obolDelegationEvents';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log('API Route: Getting delegation events...');
     const { complete, incomplete } = await getDelegationEvents(true);

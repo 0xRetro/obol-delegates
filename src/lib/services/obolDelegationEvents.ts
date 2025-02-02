@@ -151,15 +151,13 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
       );
 
       // Clean up events before returning
-      const cleanCompleteEvents = completeEvents.map(({ hasDelegate, hasVotes, ...event }) => ({
+      const cleanCompleteEvents = completeEvents.map(({ ...event }) => ({
         ...event,
         toDelegate: event.toDelegate!,
       }));
-      const cleanIncompleteEvents = incompleteVotesChangedEvents.map(({ hasDelegate, hasVotes, ...event }) => ({
+      const cleanIncompleteEvents = incompleteVotesChangedEvents.map(({ ...event }) => ({
         ...event,
         toDelegate: event.toDelegate!,
-        delegator: undefined,
-        fromDelegate: undefined
       }));
 
       // Update stats
@@ -250,8 +248,8 @@ export async function getDelegationEvents(includeIncomplete: boolean = false): P
 }> {
   try {
     const CHUNK_SIZE = 2000; // Smaller chunks to avoid size limit
-    let complete: DelegationEvent[] = [];
-    let incomplete: DelegationEvent[] = [];
+    const complete: DelegationEvent[] = [];
+    const incomplete: DelegationEvent[] = [];
 
     // Get list lengths first
     const [completeLength, incompleteLength] = await Promise.all([

@@ -106,7 +106,7 @@ async function calculateEventWeights(): Promise<Map<string, string>> {
 }
 
 // Update existing vote weights with calculated event weights
-async function updateVoteWeightsWithEvents(): Promise<void> {
+export async function updateVoteWeightsWithEvents(): Promise<void> {
   try {
     // Get all current vote weights and event weights
     const [currentWeights, eventWeightMap] = await Promise.all([

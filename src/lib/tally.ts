@@ -1,5 +1,4 @@
 import { TALLY_API_BASE_URL, TALLY_API_KEY } from './constants';
-import { addDelegates } from './services/obolDelegates';
 
 interface TallyDelegate {
   address: string;

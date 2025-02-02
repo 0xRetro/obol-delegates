@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDelegateList, addDelegates } from '@/lib/services/obolDelegates';
 import { getDelegationEvents } from '@/lib/services/obolDelegationEvents';
-import type { ObolDelegate } from '@/lib/services/obolDelegates';
 
 export async function POST() {
   try {

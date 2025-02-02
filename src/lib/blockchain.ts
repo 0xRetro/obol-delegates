@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { OBOL_CONTRACT_ADDRESS, OBOL_CONTRACT_ABI, RPC_URL } from './constants';
+import { RPC_URL, OBOL_CONTRACT_ADDRESS } from './constants';
 
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
@@ -31,7 +31,7 @@ interface DelegationEvent {
 }
 
 // Make a direct JSON-RPC call
-async function callContract(method: string, params: any[]): Promise<any> {
+async function callContract<T>(method: string, params: unknown[]): Promise<T> {
   if (!RPC_URL) {
     throw new Error('RPC_URL environment variable is not set');
   }
@@ -58,7 +58,7 @@ async function callContract(method: string, params: any[]): Promise<any> {
     throw new Error(result.error.message || 'RPC call failed');
   }
 
-  return result.result;
+  return result.result as T;
 }
 
 /**
@@ -119,8 +119,8 @@ export const getLatestBlockNumber = async (): Promise<number> => {
 
   while (retryCount < MAX_RETRIES) {
     try {
-      const result = await callContract('eth_blockNumber', []);
-      return parseInt(result, 16);
+      const result = await callContract<string>('eth_blockNumber', []);
+      return parseInt(result as string, 16);
     } catch (error) {
       console.error(`Error getting latest block (attempt ${retryCount + 1}):`, error);
       
@@ -134,4 +134,35 @@ export const getLatestBlockNumber = async (): Promise<number> => {
   }
 
   throw new Error('Max retries exceeded getting latest block');
-}; 
+};
+
+/**
+ * Get delegates with their current voting power
+ */
+export async function getDelegatesWithVotes(delegates: Array<{ address: string }>): Promise<Array<{ address: string; votes: string }>> {
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const contract = new ethers.Contract(
+    OBOL_CONTRACT_ADDRESS,
+    ['function getVotes(address) view returns (uint256)'],
+    provider
+  );
+  const results = [];
+
+  for (const delegate of delegates) {
+    try {
+      const votes = await contract.getVotes(delegate.address);
+      results.push({
+        address: delegate.address,
+        votes: ethers.formatEther(votes)
+      });
+    } catch (error) {
+      console.error(`Error getting votes for ${delegate.address}:`, error);
+      results.push({
+        address: delegate.address,
+        votes: '0'
+      });
+    }
+  }
+
+  return results;
+} 

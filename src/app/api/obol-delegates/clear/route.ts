@@ -1,11 +1,10 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { clearDelegates } from '@/lib/services/obolDelegates';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     console.log('API Route: Clearing all delegate data...');
     

@@ -1,4 +1,3 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { getDelegates as getTallyDelegates } from '@/lib/tally';
 import { getDelegateList, addDelegates, updateDelegatesFromTally } from '@/lib/services/obolDelegates';
@@ -7,7 +6,7 @@ import { getDelegateList, addDelegates, updateDelegatesFromTally } from '@/lib/s
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     console.log('API Route: Starting Tally sync...');
     

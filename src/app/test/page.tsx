@@ -2,8 +2,21 @@
 
 import { useState } from 'react';
 
+interface MismatchResult {
+  success: boolean;
+  totalChecked: number;
+  mismatchesFound: number;
+  updatedAddresses: Array<{
+    address: string;
+    weight: string;
+    eventCalcWeight: string;
+  }>;
+  timestamp: number;
+  error?: string;
+}
+
 export default function TestPage() {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<MismatchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
@@ -301,6 +314,25 @@ export default function TestPage() {
     }
   };
 
+  const checkMismatches = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/obol-delegates/check-mismatches');
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to check mismatches');
+      }
+      
+      setResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold mb-4">API Test Page</h1>
@@ -459,6 +491,18 @@ export default function TestPage() {
               className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"
             >
               Inspect Address
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={checkMismatches}
+              disabled={loading}
+              className="px-4 py-2 bg-[#2FE4AB] text-gray-800 rounded-lg hover:bg-[#29cd99] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Checking...' : 'Check Mismatched Weights'}
             </button>
           </div>
         </div>

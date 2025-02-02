@@ -1,4 +1,3 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { getLatestProcessedBlock, processEvents, storeDelegationEvents, storeIncompleteDelegationEvents } from '@/lib/services/obolDelegationEvents';

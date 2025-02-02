@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processEvents, syncDelegationEvents } from '@/lib/services/obolDelegationEvents';
-import type { DelegationEvent, EventStats } from '@/lib/types';
+import { syncDelegationEvents } from '@/lib/services/obolDelegationEvents';
 
 export async function GET() {
   try {
