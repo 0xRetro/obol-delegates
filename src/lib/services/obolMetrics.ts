@@ -57,13 +57,8 @@ export async function buildMetrics(): Promise<ObolMetrics> {
     
     // Calculate Tally voting power percentage
     const tallyVotingPowerPercentage = totalVotingPower > 0 
-<<<<<<< HEAD
-      ? ((tallyVotingPower / totalVotingPower) * 100).toFixed(1)
-      : '0.0';
-=======
       ? ((tallyVotingPower / totalVotingPower) * 100).toFixed(0)
       : '0';
->>>>>>> get-delegatoooors
     
     console.log('Tally metrics:', {
       totalVotingPower,

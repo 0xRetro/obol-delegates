@@ -15,7 +15,6 @@ interface DelegateWithVotes extends Delegate {
   votes: string;
   rank: number;
   percentage: string;
-  uniqueDelegators?: number;
   delegatorPercent?: number;
   uniqueDelegators?: number;
 }
