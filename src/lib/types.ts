@@ -23,8 +23,10 @@ export interface EventStats {
 export interface ObolMetrics {
   totalVotingPower: string;  // Formatted string with 2 decimal places
   totalDelegates: number;
+  totalDelegators: number;
+  tallyRegisteredDelegates: number;  // Number of delegates with tallyProfile=true
+  tallyVotingPowerPercentage: string;  // Percentage of total voting power held by Tally delegates
   delegatesWithVotingPower: number;
   delegatesWithSignificantPower: number;  // Delegates with >1% voting power
-  tallyRegisteredDelegates: number;  // Number of delegates with tallyProfile=true
   timestamp: number;  // When these metrics were calculated
 } 

@@ -14,6 +14,7 @@ export interface VoteWeight {
   address: string;
   weight: string;  // Formatted number string with 2 decimal places
   eventCalcWeight?: string;  // Optional calculated weight from events
+  uniqueDelegators?: number;  // Number of unique delegators
 }
 
 export interface VoteWeightComparison {
@@ -84,14 +85,30 @@ function calculateEventWeight(events: DelegationEvent[], address: string): strin
 }
 
 // Calculate vote weights from events for all addresses
-async function calculateEventWeights(): Promise<Map<string, string>> {
+async function calculateEventWeights(): Promise<Map<string, { weight: string; uniqueDelegators: number }>> {
   // Get all delegation events - explicitly include incomplete events
   const eventData = await getDelegationEvents(true);
   const allEvents = [...eventData.complete, ...eventData.incomplete];
   console.log(`Processing ${allEvents.length} total events (${eventData.complete.length} complete, ${eventData.incomplete.length} incomplete)`);
   
-  // Create a map of address to total weight
-  const weightMap = new Map<string, string>();
+  // Create a map of address to total weight and unique delegators
+  const weightMap = new Map<string, { weight: string; uniqueDelegators: number }>();
+  
+  // Create a map to track unique delegators for each delegate
+  const delegatorMap = new Map<string, Set<string>>();
+  
+  // Process each event to build the delegator sets
+  allEvents.forEach(event => {
+    if (event.toDelegate && event.delegator) {
+      const delegateAddress = event.toDelegate.toLowerCase();
+      const delegatorAddress = event.delegator.toLowerCase();
+      
+      if (!delegatorMap.has(delegateAddress)) {
+        delegatorMap.set(delegateAddress, new Set());
+      }
+      delegatorMap.get(delegateAddress)?.add(delegatorAddress);
+    }
+  });
   
   // Process each unique address
   const uniqueAddresses = new Set(allEvents.map(e => e.toDelegate.toLowerCase()));
@@ -99,7 +116,8 @@ async function calculateEventWeights(): Promise<Map<string, string>> {
   
   uniqueAddresses.forEach(address => {
     const weight = calculateEventWeight(allEvents, address);
-    weightMap.set(address, weight);
+    const uniqueDelegators = delegatorMap.get(address)?.size || 0;
+    weightMap.set(address, { weight, uniqueDelegators });
   });
   
   return weightMap;
@@ -124,19 +142,22 @@ export async function updateVoteWeightsWithEvents(): Promise<void> {
     
     // First, update all existing entries
     existingWeightMap.forEach((weight, address) => {
+      const eventData = eventWeightMap.get(address);
       updatedWeights.push({
         ...weight,
-        eventCalcWeight: eventWeightMap.get(address) || '0.00'
+        eventCalcWeight: eventData?.weight || '0.00',
+        uniqueDelegators: eventData?.uniqueDelegators || 0
       });
     });
     
     // Then add any new addresses that only appear in events
-    eventWeightMap.forEach((eventWeight, address) => {
+    eventWeightMap.forEach((eventData, address) => {
       if (!existingWeightMap.has(address)) {
         updatedWeights.push({
           address,
           weight: '0.00', // null weight since not fetched from etherscan yet
-          eventCalcWeight: eventWeight
+          eventCalcWeight: eventData.weight,
+          uniqueDelegators: eventData.uniqueDelegators
         });
       }
     });
@@ -299,19 +320,24 @@ export async function calculateAndUpdateEventWeights(): Promise<{
     const currentWeights = await getVoteWeights();
     console.log(`Updating ${currentWeights.length} vote weight records with event calculations...`);
     
-    // Update eventCalcWeight for each entry
-    const updatedWeights = currentWeights.map(weight => ({
-      ...weight,
-      eventCalcWeight: eventWeightMap.get(weight.address.toLowerCase()) || '0.00'
-    }));
+    // Update eventCalcWeight and uniqueDelegators for each entry
+    const updatedWeights = currentWeights.map(weight => {
+      const eventData = eventWeightMap.get(weight.address.toLowerCase());
+      return {
+        ...weight,
+        eventCalcWeight: eventData?.weight || '0.00',
+        uniqueDelegators: eventData?.uniqueDelegators || 0
+      };
+    });
     
     // Add any new addresses that only appear in events
-    eventWeightMap.forEach((eventWeight, address) => {
+    eventWeightMap.forEach((eventData, address) => {
       if (!currentWeights.some(w => w.address.toLowerCase() === address)) {
         updatedWeights.push({
           address,
           weight: '0.00',
-          eventCalcWeight: eventWeight
+          eventCalcWeight: eventData.weight,
+          uniqueDelegators: eventData.uniqueDelegators
         });
       }
     });
