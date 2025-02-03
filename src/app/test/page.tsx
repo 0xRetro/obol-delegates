@@ -3,18 +3,12 @@
 import { useState } from 'react';
 import { formatNumber } from '@/lib/utils';
 import { DelegationEvent } from '@/lib/types';
+import DelegateCard from '@/components/DelegateCard';
+import ObolPhoneLoader from '@/components/LoadingAnimation';
+import ObolLogo from '@/components/ObolLogo';
 
-interface DelegateWithVotes {
-  address: string;
-  ens?: string;
-  name?: string;
-  tallyProfile: boolean;
-  votes: string;
-  rank: number;
-  percentage: string;
-  delegatorCount: number;
-  delegatorPercent?: string;
-}
+// Remove the duplicate interface and use the one from DelegateCard
+type DelegateWithVotes = Parameters<typeof DelegateCard>[0]['delegate'];
 
 interface InspectResponse {
   data: {
@@ -55,65 +49,6 @@ interface MetricsResponse {
     timestamp: number;
   };
   error?: string;
-}
-
-// Delegate card component matching main UI exactly
-function DelegateCard({ delegate }: { delegate: DelegateWithVotes }) {
-  return (
-    <div className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
-      <div className="flex justify-between items-start">
-        <div className="flex gap-4">
-          <div className="text-lg font-semibold text-gray-500 w-16 flex items-center">
-            #{delegate.rank}
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              {delegate.name && (
-                <div className="text-sm font-medium">
-                  {delegate.name}
-                </div>
-              )}
-              {delegate.ens && (
-                <div className="text-sm text-blue-600">
-                  {delegate.ens}
-                </div>
-              )}
-            </div>
-            <div className="font-mono text-sm break-all text-gray-600">
-              {delegate.address}
-            </div>
-            <div className="flex items-center gap-3">
-              {delegate.tallyProfile && (
-                <a 
-                  href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-2 px-3 py-1 text-sm bg-[#2FE4AB] text-gray-800 rounded hover:bg-[#29cd99] transition-colors"
-                >
-                  Delegate Profile
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-sm font-medium">Voting Power</div>
-          <div className="text-lg font-semibold">
-            {formatNumber(Number(delegate.votes))}
-          </div>
-          <div className="text-sm text-gray-500">
-            {delegate.percentage}% of votes
-          </div>
-          {delegate.delegatorPercent && (
-            <div className="text-xs text-gray-500 mt-1">
-              {delegate.delegatorCount} delegator{delegate.delegatorCount !== 1 ? 's' : ''}
-              {delegate.delegatorPercent && ` (${delegate.delegatorPercent}% of total)`}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function TestPage() {
@@ -434,7 +369,7 @@ export default function TestPage() {
     }
   };
 
-  // Transform inspection data to match main UI delegate format
+  // Update transformInspectionData to match types exactly
   const transformInspectionData = (response: InspectResponse): DelegateWithVotes => {
     const data = response.data;
     return {
@@ -443,23 +378,25 @@ export default function TestPage() {
       ens: data.delegateInfo?.ens || undefined,
       tallyProfile: data.delegateInfo?.tallyProfile || false,
       votes: data.voteWeights?.weight || '0',
-      rank: Math.floor(Math.random() * 50) + 1, // Random rank 1-50
-      percentage: '100.00', // 100% for dev
-      delegatorCount: Math.floor(Math.random() * 100), // Random number of delegators for testing
-      delegatorPercent: Math.random().toFixed(2) // Random percentage for testing
+      rank: Math.floor(Math.random() * 50) + 1,
+      percentage: '100.00',
+      uniqueDelegators: Math.floor(Math.random() * 100),
+      delegatorPercent: Math.random().toFixed(2)
     };
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 bg-gray-900 text-white min-h-screen">
       <h1 className="text-2xl font-bold mb-4">API Test Page</h1>
       
       <div className="space-y-4 mb-8">
-        <div className="space-x-4">
+        {/* Grid container */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Row 1 */}
           <button
             onClick={testGetDelegates}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
             Get Delegates
           </button>
@@ -467,10 +404,13 @@ export default function TestPage() {
           <button
             onClick={testSyncTally}
             disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
           >
             Sync Tally
           </button>
+
+          <div></div>
+          <div></div>
 
           <button
             onClick={clearDelegates}
@@ -479,13 +419,12 @@ export default function TestPage() {
           >
             Clear Delegates
           </button>
-        </div>
 
-        <div className="space-x-4">
+          {/* Row 2 */}
           <button
             onClick={getDelegationEvents}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
             Get Delegation Events
           </button>
@@ -493,9 +432,25 @@ export default function TestPage() {
           <button
             onClick={testSyncDelegationEvents}
             disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
           >
             Sync Delegation Events
+          </button>
+
+          <button
+            onClick={addEventDelegates}
+            disabled={loading}
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
+          >
+            Add Event Delegates
+          </button>
+
+          <button
+            onClick={inspectDelegateLists}
+            disabled={loading}
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            Inspect Delegate Lists
           </button>
 
           <button
@@ -505,31 +460,12 @@ export default function TestPage() {
           >
             Clear Delegation Events
           </button>
-        </div>
 
-        <div className="space-x-4">
-          <button
-            onClick={inspectDelegateLists}
-            disabled={loading}
-            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
-          >
-            Inspect Delegate Lists
-          </button>
-
-          <button
-            onClick={addEventDelegates}
-            disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
-          >
-            Add Event Delegates
-          </button>
-        </div>
-
-        <div className="space-x-4">
+          {/* Row 3 */}
           <button
             onClick={getVoteWeights}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
             Get Vote Weights
           </button>
@@ -537,7 +473,7 @@ export default function TestPage() {
           <button
             onClick={fetchOnChainVoteWeights}
             disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
           >
             Fetch On-Chain Weights
           </button>
@@ -545,9 +481,17 @@ export default function TestPage() {
           <button
             onClick={calculateVoteWeights}
             disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
           >
             Calculate Event Weights
+          </button>
+
+          <button
+            onClick={inspectVoteWeights}
+            disabled={loading}
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            Inspect Vote Weights
           </button>
 
           <button
@@ -558,20 +502,26 @@ export default function TestPage() {
             Clear Vote Weights
           </button>
 
-          <button
-            onClick={inspectVoteWeights}
-            disabled={loading}
-            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
-          >
-            Inspect Vote Weights
-          </button>
-        </div>
+          {/* Row 4 */}
+          <div></div>
 
-        <div className="space-x-4">
+          <button
+            onClick={checkMismatches}
+            disabled={loading}
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
+          >
+            Check Mismatched Weights
+          </button>
+
+          <div></div>
+          <div></div>
+          <div></div>
+
+          {/* Row 5 */}
           <button
             onClick={getMetrics}
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
             Get Metrics
           </button>
@@ -579,10 +529,13 @@ export default function TestPage() {
           <button
             onClick={buildMetrics}
             disabled={loading}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] disabled:opacity-50"
           >
             Build Metrics
           </button>
+
+          <div></div>
+          <div></div>
 
           <button
             onClick={clearMetrics}
@@ -593,44 +546,56 @@ export default function TestPage() {
           </button>
         </div>
 
-        <div className="space-y-2">
+        {/* Animation Components Preview */}
+        <div className="my-12 space-y-8">
+          <h2 className="text-xl font-semibold mb-6">Animation Components Preview</h2>
+          <div className="grid grid-cols-2 gap-8">
+            {/* Phone Loader */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-[#2FE4AB]">Phone Loading Animation</h3>
+              <div className="flex justify-center">
+                <ObolPhoneLoader />
+              </div>
+            </div>
+            
+            {/* Logo Animation */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-[#2FE4AB]">Title Logo Animation</h3>
+              <div className="flex items-center gap-4">
+                <span className="text-2xl font-bold">Obol Delegates</span>
+                <ObolLogo />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Address inspection input */}
+        <div className="mt-8">
           <div className="flex items-center space-x-4">
             <input
               type="text"
               value={addressToInspect}
               onChange={(e) => setAddressToInspect(e.target.value)}
               placeholder="Enter address to inspect"
-              className="px-4 py-2 border rounded flex-grow"
+              className="px-4 py-2 border border-gray-700 bg-gray-800 text-white rounded flex-grow"
             />
             <button
               onClick={inspectAddress}
               disabled={loading}
-              className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 disabled:opacity-50"
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
             >
               Inspect Address
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={checkMismatches}
-              disabled={loading}
-              className="px-4 py-2 bg-[#2FE4AB] text-gray-800 rounded-lg hover:bg-[#29cd99] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Checking...' : 'Check Mismatched Weights'}
             </button>
           </div>
         </div>
       </div>
 
       {loading && (
-        <div className="text-gray-600 mb-4">Loading...</div>
+        <div className="text-gray-400 mb-4">Loading...</div>
       )}
 
       {error && (
-        <div className="text-red-600 mb-4">
+        <div className="text-red-400 mb-4">
           Error: {error}
         </div>
       )}
@@ -641,13 +606,15 @@ export default function TestPage() {
           {isInspectResponse(result) && (
             <div>
               <h2 className="text-xl font-semibold mb-4">Delegate Card Preview:</h2>
-              <DelegateCard delegate={transformInspectionData(result)} />
+              <div className="px-3 md:px-3 lg:px-4 py-3 md:py-3 lg:py-4 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors w-full bg-gray-800">
+                <DelegateCard delegate={transformInspectionData(result)} />
+              </div>
             </div>
           )}
 
           <div>
             <h2 className="text-xl font-semibold mb-2">Raw Inspection Data:</h2>
-            <pre className="bg-gray-100 p-4 rounded overflow-auto max-h-[500px]">
+            <pre className="bg-gray-800 border border-gray-700 p-4 rounded overflow-auto max-h-[500px] text-gray-300">
               {JSON.stringify(result, null, 2)}
             </pre>
           </div>

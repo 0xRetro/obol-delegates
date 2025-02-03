@@ -5,6 +5,12 @@ import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  shrinkToFit: false
+};
+
 export const metadata: Metadata = {
   title: "Obol Delegates",
   description: "View and manage Obol Network delegates",

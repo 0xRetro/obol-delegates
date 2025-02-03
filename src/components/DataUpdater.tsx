@@ -19,32 +19,34 @@ const UPDATE_STEPS = [
 ];
 
 export default function DataUpdater({ timestamp }: Props) {
+  console.log('DataUpdater: Initializing with timestamp:', timestamp);
   const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<number>(0);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const isDataStale = (timestamp: number): boolean => {
-    console.log('Checking data staleness for timestamp:', timestamp);
+    console.log('DataUpdater: Checking data staleness for timestamp:', timestamp);
     
     // Check for invalid, zero, or missing timestamp
     if (!timestamp || timestamp <= 0) {
-      console.log('Data is stale: Invalid or missing timestamp');
+      console.log('DataUpdater: Data is stale: Invalid or missing timestamp');
       return true;
     }
 
     // Check if timestamp is unreasonably far in the future (potential error case)
     if (timestamp > Date.now() + (24 * 60 * 60 * 1000)) {
-      console.log('Data is stale: Timestamp is too far in the future');
+      console.log('DataUpdater: Data is stale: Timestamp is too far in the future');
       return true;
     }
 
     // Check if data is older than 1 hour
     const age = Date.now() - timestamp;
     const isStale = age > 60 * 60 * 1000;
-    console.log('Data age (minutes):', Math.floor(age / (60 * 1000)));
-    console.log('Is data stale?', isStale);
+    console.log('DataUpdater: Data age (minutes):', Math.floor(age / (60 * 1000)));
+    console.log('DataUpdater: Is data stale?', isStale);
     return isStale;
   };
 
@@ -95,68 +97,81 @@ export default function DataUpdater({ timestamp }: Props) {
   };
 
   useEffect(() => {
+    // Wait a bit before starting the first check to ensure page is fully loaded
+    if (!hasInitialized) {
+      console.log('DataUpdater: Setting up initial delay');
+      const initTimer = setTimeout(() => {
+        console.log('DataUpdater: Ready to start checking');
+        setHasInitialized(true);
+      }, 1000);
+      return () => clearTimeout(initTimer);
+    }
+
     const checkAndUpdate = async () => {
-      console.log('Checking if update is needed...');
+      console.log('DataUpdater: Checking if update is needed...');
       // Prevent update if we've updated recently (within last 5 minutes)
       if (Date.now() - lastUpdateTimestamp < 5 * 60 * 1000) {
-        console.log('Skipping update - updated recently');
+        console.log('DataUpdater: Skipping update - updated recently');
         return;
       }
       
       if (!isDataStale(timestamp) || isUpdating) return;
 
-      console.log('Starting update sequence due to stale data');
+      console.log('DataUpdater: Starting update sequence due to stale data');
       setIsUpdating(true);
       setError(null);
 
       for (let i = 0; i < UPDATE_STEPS.length; i++) {
         const success = await executeStep(i);
         if (!success) {
-          console.log('Update sequence failed at step:', UPDATE_STEPS[i].name);
+          console.log('DataUpdater: Update sequence failed at step:', UPDATE_STEPS[i].name);
           setIsUpdating(false);
           return;
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      console.log('Update sequence completed successfully');
+      console.log('DataUpdater: Update sequence completed successfully');
       setLastUpdateTimestamp(Date.now());
       setIsUpdating(false);
       router.refresh();
     };
 
-    checkAndUpdate();
-  }, [timestamp, isUpdating, router, lastUpdateTimestamp]);
+    if (hasInitialized) {
+      checkAndUpdate();
+    }
+  }, [timestamp, isUpdating, router, lastUpdateTimestamp, hasInitialized]);
 
   if (!isUpdating) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 bg-white p-4 rounded-lg shadow-lg border border-gray-200 max-w-md z-50">
-      <h3 className="font-semibold mb-2">Updating Data...</h3>
+    <div className="fixed bottom-4 left-4 bg-gray-800/50 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-gray-700 max-w-md z-50">
+      <h3 className="font-semibold mb-2 text-white">Updating Data...</h3>
       <div className="space-y-2">
         {UPDATE_STEPS.map((step, index) => (
           <div 
             key={step.id}
             className={`flex items-center gap-2 ${
-              index === currentStep ? 'text-blue-600' :
-              index < currentStep ? 'text-green-600' : 'text-gray-400'
+              index === currentStep ? 'text-blue-400' :
+              index < currentStep ? 'text-[#2FE4AB]' : 'text-gray-500'
             }`}
           >
             {index < currentStep ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <span>✓</span>
             ) : index === currentStep ? (
-              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
             ) : (
-              <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+              <span>○</span>
             )}
             <span>{step.name}</span>
           </div>
         ))}
       </div>
       {error && (
-        <div className="mt-2 text-sm text-red-600">
+        <div className="mt-2 text-sm text-red-400">
           Error: {error}
         </div>
       )}
