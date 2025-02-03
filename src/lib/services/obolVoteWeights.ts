@@ -245,7 +245,12 @@ async function fetchVoteWeightsBatch(
           weight: formatVoteWeight(weight)
         };
       } catch (error) {
-        console.error(`Error fetching vote weight for ${delegate.address}:`, error);
+        // More concise error message for expected cases
+        if (error instanceof Error && error.message.includes('missing revert data')) {
+          console.log(`Delegate ${delegate.address} has no voting weight`);
+        } else {
+          console.error(`Unexpected error fetching vote weight for ${delegate.address}:`, error);
+        }
         return {
           address: delegate.address,
           weight: '0.00'

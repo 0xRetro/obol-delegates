@@ -2,14 +2,7 @@ import { getMetrics } from '@/lib/services/obolMetrics';
 import { getVoteWeights, VoteWeight } from '@/lib/services/obolVoteWeights';
 import ClientWrapper from '@/components/ClientWrapper';
 import DelegateCard from '@/components/DelegateCard';
-
-// Helper functions
-const formatNumber = (num: number): string => {
-  return new Intl.NumberFormat('en-US', { 
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1 
-  }).format(num);
-};
+import ObolLogo from '@/components/ObolLogo';
 
 const formatWholeNumber = (num: number): string => {
   return new Intl.NumberFormat('en-US', { 
@@ -38,6 +31,7 @@ const formatTimeUntilRefresh = (timestamp: number): { text: string; isOverdue: b
   const hours = Math.floor(absMinutes / 60);
   const minutes = absMinutes % 60;
   
+  // eslint-disable-next-line prefer-const
   let timeText = hours > 0 ? `${hours}h${minutes}m` : `${minutes}m`;
   
   return {
@@ -111,9 +105,14 @@ export default async function DelegateDataWrapper() {
     <ClientWrapper timestamp={metrics?.timestamp}>
       <div className="flex flex-col w-full overflow-auto pt-6">
         <div className="flex flex-col items-center md:items-start gap-4 w-full">
-          <h1 className="text-4xl md:text-2xl lg:text-3xl font-bold text-center md:text-left text-white">
-            Obol Delegates
-          </h1>
+          <div className="flex items-center gap-2 md:gap-3 h-[60px] md:h-[45px] lg:h-[52px]">
+            <h1 className="text-4xl md:text-2xl lg:text-3xl font-bold text-center md:text-left text-white">
+              Obol Delegates
+            </h1>
+            <div className="w-[120px] flex items-center">
+              <ObolLogo />
+            </div>
+          </div>
           
           {/* Metrics and buttons container */}
           <div className="flex flex-col md:flex-row md:justify-between w-full gap-6 md:min-w-[700px]">

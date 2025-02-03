@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 
 const ObolLogo: React.FC = () => {
   const [animationStep, setAnimationStep] = useState(0)
-  const [isVisible, setIsVisible] = useState(true)
 
   useEffect(() => {
     const animate = async () => {
@@ -37,12 +36,13 @@ const ObolLogo: React.FC = () => {
 
   return (
     <div className="logo-container">
-      <svg className="infinity-symbol" viewBox="0 0 120 40" xmlns="http://www.w3.org/2000/svg">
+      <svg className="infinity-symbol" viewBox="0 0 100 40" xmlns="http://www.w3.org/2000/svg">
         <path
-          d="M20,20 C20,16 22,12 25,12 C28,12 30,16 45,20 C60,24 65,28 75,30 C82,30 88,28 90,20 C90,12 85,4 75,4 C65,4 60,16 45,20 C30,24 28,28 25,28 C22,28 20,24 20,20"
+          d="M24,20 C24,15 27,11 31,11 C35,11 38,15 48,20 C60,25 70,35 77,35 C83,35 87,27 87,20 C87,6 83,2 77,2 C70,2 60,15 48,20 C38,25 35,29 31,29 C27,29 24,25 24,20"
           fill="none"
           stroke="#2FE4AB"
-          strokeWidth="3"
+          strokeWidth="3.2"
+          strokeLinecap="round"
           strokeDasharray="200"
           strokeDashoffset={200 - animationStep * 2}
         />
@@ -50,7 +50,7 @@ const ObolLogo: React.FC = () => {
       <style jsx>{`
         .logo-container {
           height: 40px;
-          width: 120px;
+          width: 100px;
           display: flex;
           align-items: center;
           justify-content: center;

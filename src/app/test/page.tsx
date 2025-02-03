@@ -1,7 +1,6 @@
-'use client';
+"use client";
 
 import { useState } from 'react';
-import { formatNumber } from '@/lib/utils';
 import { DelegationEvent } from '@/lib/types';
 import DelegateCard from '@/components/DelegateCard';
 import ObolPhoneLoader from '@/components/LoadingAnimation';
@@ -52,15 +51,28 @@ interface MetricsResponse {
 }
 
 export default function TestPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Using environment variable through Next.js public runtime config
+    if (password === process.env.NEXT_PUBLIC_TEST_PAGE_PASSWORD) {
+      setIsAuthenticated(true);
+      setError('');
+    } else {
+      setError('Invalid password');
+    }
+  };
 
   const testGetDelegates = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates');
       const data: ApiResponse<DelegateWithVotes> = await response.json();
       setResult(data);
@@ -74,7 +86,7 @@ export default function TestPage() {
   const testSyncTally = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/sync-tally', {
         method: 'POST',
         headers: {
@@ -93,7 +105,7 @@ export default function TestPage() {
   const clearDelegates = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/clear', {
         method: 'POST',
         headers: {
@@ -112,7 +124,7 @@ export default function TestPage() {
   const testSyncDelegationEvents = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/sync-events', {
         method: 'POST',
         headers: {
@@ -131,7 +143,7 @@ export default function TestPage() {
   const getDelegationEvents = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/events');
       const data = await response.json();
       setResult(data);
@@ -145,7 +157,7 @@ export default function TestPage() {
   const clearDelegationEvents = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/events/clear', {
         method: 'POST',
         headers: {
@@ -164,7 +176,7 @@ export default function TestPage() {
   const inspectDelegateLists = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/inspect-delegate-lists');
       const data = await response.json();
       setResult(data);
@@ -178,7 +190,7 @@ export default function TestPage() {
   const addEventDelegates = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/add-event-delegates', {
         method: 'POST',
         headers: {
@@ -197,7 +209,7 @@ export default function TestPage() {
   const getVoteWeights = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/vote-weights');
       const data = await response.json();
       setResult(data);
@@ -211,7 +223,7 @@ export default function TestPage() {
   const fetchOnChainVoteWeights = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/fetch-vote-weights', {
         method: 'POST',
         headers: {
@@ -230,7 +242,7 @@ export default function TestPage() {
   const calculateVoteWeights = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/calculate-vote-weights', {
         method: 'POST',
         headers: {
@@ -249,7 +261,7 @@ export default function TestPage() {
   const clearVoteWeights = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/vote-weights', {
         method: 'DELETE',
         headers: {
@@ -268,7 +280,7 @@ export default function TestPage() {
   const inspectVoteWeights = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/inspect-vote-weights');
       const data = await response.json();
       setResult(data);
@@ -287,7 +299,7 @@ export default function TestPage() {
 
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch(`/api/obol-delegates/inspect-address?address=${addressToInspect}`);
       const data = await response.json();
       setResult(data);
@@ -301,7 +313,7 @@ export default function TestPage() {
   const getMetrics = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/metrics');
       const data = await response.json();
       setResult(data);
@@ -315,7 +327,7 @@ export default function TestPage() {
   const buildMetrics = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/metrics', {
         method: 'POST',
         headers: {
@@ -334,7 +346,7 @@ export default function TestPage() {
   const clearMetrics = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError('');
       const response = await fetch('/api/obol-delegates/metrics', {
         method: 'DELETE',
         headers: {
@@ -352,7 +364,7 @@ export default function TestPage() {
 
   const checkMismatches = async () => {
     setLoading(true);
-    setError(null);
+    setError('');
     try {
       const res = await fetch('/api/obol-delegates/check-mismatches');
       const data = await res.json();
@@ -384,6 +396,34 @@ export default function TestPage() {
       delegatorPercent: Math.random().toFixed(2)
     };
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-96">
+          <h1 className="text-2xl font-bold mb-6 text-white">Password Required</h1>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-[#2FE4AB] focus:outline-none"
+              />
+            </div>
+            {error && <p className="text-red-500 text-sm">{error}</p>}
+            <button
+              type="submit"
+              className="w-full bg-[#2FE4AB] text-black py-2 px-4 rounded hover:bg-[#29cd99] transition-colors"
+            >
+              Submit
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 bg-gray-900 text-white min-h-screen">

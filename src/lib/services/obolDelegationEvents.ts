@@ -5,7 +5,7 @@ import type { DelegationEvent, EventStats } from '@/lib/types';
 const OBOL_CONTRACT = '0x0b010000b7624eb9b3dfbc279673c76e9d29d5f7';
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 const ALCHEMY_URL = ALCHEMY_API_KEY ? `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` : null;
-const REQUESTS_PER_SECOND = 10;
+const REQUESTS_PER_SECOND = 20;
 const MAX_RETRIES = 3;
 
 // Event signatures
@@ -91,24 +91,40 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
         fromBlock,
         toBlock,
         topics: [[DELEGATE_CHANGED_TOPIC, DELEGATE_VOTES_CHANGED_TOPIC]]
-      }]);
+      }]) as Array<{
+        topics: string[],
+        blockNumber: string,
+        transactionHash: string,
+        data: string
+      }>;
 
       // Process each log into our event format
       const events: { [key: string]: DelegationEvent & { hasDelegate?: boolean, hasVotes?: boolean } } = {};
+      
+      // Get unique block numbers and fetch timestamps in batches
+      const uniqueBlocks = [...new Set(logs.map(log => log.blockNumber))];
       const blockTimestamps: { [blockNumber: string]: number } = {};
-
-      for (const log of logs) {
-        const blockNumber = parseInt(log.blockNumber, 16);
+      
+      console.log(`Fetching timestamps for ${uniqueBlocks.length} unique blocks`);
+      const TIMESTAMP_BATCH_SIZE = REQUESTS_PER_SECOND; // Use the same rate limit as other API calls
+      
+      for (let i = 0; i < uniqueBlocks.length; i += TIMESTAMP_BATCH_SIZE) {
+        const batchBlocks = uniqueBlocks.slice(i, i + TIMESTAMP_BATCH_SIZE);
+        await rateLimiter.waitForNextRequest();
         
-        // Get block timestamp if we haven't already
-        if (!blockTimestamps[log.blockNumber]) {
-          await rateLimiter.waitForNextRequest();
-          const block = await provider.getBlock(blockNumber);
+        const batchPromises = batchBlocks.map(async (blockHex: string) => {
+          const block = await provider.getBlock(parseInt(blockHex, 16));
           if (block) {
-            blockTimestamps[log.blockNumber] = block.timestamp;
+            blockTimestamps[blockHex] = block.timestamp;
           }
-        }
+        });
+        
+        await Promise.all(batchPromises);
+        console.log(`Processed timestamps for blocks ${i + 1} to ${Math.min(i + TIMESTAMP_BATCH_SIZE, uniqueBlocks.length)} of ${uniqueBlocks.length}`);
+      }
 
+      // Now process the logs with our cached timestamps
+      for (const log of logs) {
         if (log.topics[0] === DELEGATE_CHANGED_TOPIC) {
           stats.totalDelegateChangedEvents++;
           const toDelegate = '0x' + log.topics[3].slice(26);
@@ -116,7 +132,7 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
           
           events[eventKey] = {
             ...events[eventKey],
-            blockNumber,
+            blockNumber: parseInt(log.blockNumber, 16),
             transactionHash: log.transactionHash,
             delegator: '0x' + log.topics[1].slice(26),
             fromDelegate: '0x' + log.topics[2].slice(26),
@@ -134,7 +150,7 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
           
           events[eventKey] = {
             ...events[eventKey],
-            blockNumber,
+            blockNumber: parseInt(log.blockNumber, 16),
             transactionHash: log.transactionHash,
             toDelegate,
             amountDelegatedChanged: Number(newBalance - previousBalance) / 1e18,
@@ -186,33 +202,81 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
 }
 
 // Constants for database operations
-const BATCH_SIZE = 1000; // Increased from 100 to 1000 to optimize command usage
+const BATCH_SIZE = 1000; 
+
+export async function updateLatestProcessedBlock(): Promise<void> {
+  // Get current state of tables
+  const { complete, incomplete } = await getDelegationEvents(true);
+  
+  // Get highest block from each table
+  const highestCompleteBlock = complete.length > 0 
+    ? Math.max(...complete.map(e => e.blockNumber))
+    : 0;
+  const highestIncompleteBlock = incomplete.length > 0 
+    ? Math.max(...incomplete.map(e => e.blockNumber))
+    : 0;
+  
+  console.log(`Highest blocks - Complete: ${highestCompleteBlock}, Incomplete: ${highestIncompleteBlock}`);
+  
+  // Use the minimum of the highest blocks from both tables
+  let newLatestBlock;
+  if (highestCompleteBlock > 0 && highestIncompleteBlock > 0) {
+    newLatestBlock = Math.min(highestCompleteBlock, highestIncompleteBlock);
+  } else if (highestCompleteBlock > 0) {
+    newLatestBlock = highestCompleteBlock;
+  } else if (highestIncompleteBlock > 0) {
+    newLatestBlock = highestIncompleteBlock;
+  }
+  
+  if (newLatestBlock) {
+    const currentLatestBlock = await getLatestProcessedBlock() || 0;
+    console.log(`Current latest block: ${currentLatestBlock}, New latest block: ${newLatestBlock}`);
+    
+    if (newLatestBlock !== currentLatestBlock) {
+      console.log(`Setting latest processed block to ${newLatestBlock}`);
+      await kv.set('obol-delegation-events-latest-block', newLatestBlock);
+    } else {
+      console.log(`Keeping current latest block ${currentLatestBlock} (no change needed)`);
+    }
+  }
+}
 
 export async function storeDelegationEvents(events: DelegationEvent[]): Promise<void> {
   let commandsUsed = 0;
 
   // Store complete events
   if (events.length > 0) {
-    console.log(`Storing ${events.length} complete events in batches of ${BATCH_SIZE}`);
-    for (let i = 0; i < events.length; i += BATCH_SIZE) {
-      const batch = events.slice(i, i + BATCH_SIZE);
+    // Get existing events to check for duplicates
+    const existingEvents = await getDelegationEvents(false);
+    const existingKeys = new Set(
+      existingEvents.complete.map(event => `${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+
+    // Filter out duplicates
+    const uniqueEvents = events.filter(event => 
+      !existingKeys.has(`${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+
+    if (uniqueEvents.length === 0) {
+      console.log('No new unique complete events to store');
+      return;
+    }
+
+    console.log(`Storing ${uniqueEvents.length} unique complete events (filtered ${events.length - uniqueEvents.length} duplicates) in batches of ${BATCH_SIZE}`);
+    for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
+      const batch = uniqueEvents.slice(i, i + BATCH_SIZE);
       try {
         await kv.rpush('obol-delegation-events', ...batch);
         commandsUsed++;
-        console.log(`Stored complete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(events.length/BATCH_SIZE)}`);
+        console.log(`Stored complete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(uniqueEvents.length/BATCH_SIZE)}`);
       } catch (error) {
         console.error(`Error storing complete batch ${Math.floor(i/BATCH_SIZE) + 1}:`, error);
         throw error;
       }
     }
   }
-
-  // Update latest processed block
-  const latestBlock = Math.max(...events.map(e => e.blockNumber));
-  await kv.set('obol-delegation-events-latest-block', latestBlock);
-  commandsUsed++;
   
-  console.log(`Successfully stored ${events.length} complete events using ${commandsUsed} database commands`);
+  console.log(`Successfully stored unique complete events using ${commandsUsed} database commands`);
 }
 
 export async function storeIncompleteDelegationEvents(events: DelegationEvent[]): Promise<void> {
@@ -220,26 +284,37 @@ export async function storeIncompleteDelegationEvents(events: DelegationEvent[])
 
   // Store incomplete events
   if (events.length > 0) {
-    console.log(`Storing ${events.length} incomplete events in batches of ${BATCH_SIZE}`);
-    for (let i = 0; i < events.length; i += BATCH_SIZE) {
-      const batch = events.slice(i, i + BATCH_SIZE);
+    // Get existing incomplete events to check for duplicates
+    const existingEvents = await getDelegationEvents(true);
+    const existingKeys = new Set(
+      existingEvents.incomplete.map(event => `${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+
+    // Filter out duplicates
+    const uniqueEvents = events.filter(event => 
+      !existingKeys.has(`${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+
+    if (uniqueEvents.length === 0) {
+      console.log('No new unique incomplete events to store');
+      return;
+    }
+
+    console.log(`Storing ${uniqueEvents.length} unique incomplete events (filtered ${events.length - uniqueEvents.length} duplicates) in batches of ${BATCH_SIZE}`);
+    for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
+      const batch = uniqueEvents.slice(i, i + BATCH_SIZE);
       try {
         await kv.rpush('obol-incomplete-votes-changed', ...batch);
         commandsUsed++;
-        console.log(`Stored incomplete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(events.length/BATCH_SIZE)}`);
+        console.log(`Stored incomplete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(uniqueEvents.length/BATCH_SIZE)}`);
       } catch (error) {
         console.error(`Error storing incomplete batch ${Math.floor(i/BATCH_SIZE) + 1}:`, error);
         throw error;
       }
     }
-
-    // Only update latest block if we have events
-    const latestBlock = Math.max(...events.map(e => e.blockNumber));
-    await kv.set('obol-delegation-events-latest-block', latestBlock);
-    commandsUsed++;
   }
   
-  console.log(`Successfully stored ${events.length} incomplete events using ${commandsUsed} database commands`);
+  console.log(`Successfully stored unique incomplete events using ${commandsUsed} database commands`);
 }
 
 export async function getDelegationEvents(includeIncomplete: boolean = false): Promise<{
@@ -290,9 +365,51 @@ export async function syncDelegationEvents() {
   const fromBlock = '0x' + (lastProcessed + 1).toString(16);
   const toBlock = '0x' + latestBlock.toString(16);
   
+  console.log(`Processing from block ${parseInt(fromBlock, 16)} to ${parseInt(toBlock, 16)}`);
+  
   const { events, incompleteEvents, stats } = await processEvents(fromBlock, toBlock);
-  await storeDelegationEvents(events);
-  await storeIncompleteDelegationEvents(incompleteEvents);
+  
+  // Track if we actually stored any new events
+  let storedNewEvents = false;
+  
+  // Store events in both tables first
+  if (events.length > 0) {
+    const existingEvents = await getDelegationEvents(false);
+    const existingKeys = new Set(
+      existingEvents.complete.map(event => `${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+    const uniqueEvents = events.filter(event => 
+      !existingKeys.has(`${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+    if (uniqueEvents.length > 0) {
+      await storeDelegationEvents(uniqueEvents);
+      storedNewEvents = true;
+      console.log(`Stored ${uniqueEvents.length} new complete events`);
+    }
+  }
+  
+  if (incompleteEvents.length > 0) {
+    const existingEvents = await getDelegationEvents(true);
+    const existingKeys = new Set(
+      existingEvents.incomplete.map(event => `${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+    const uniqueEvents = incompleteEvents.filter(event => 
+      !existingKeys.has(`${event.transactionHash}-${event.toDelegate.toLowerCase()}`)
+    );
+    if (uniqueEvents.length > 0) {
+      await storeIncompleteDelegationEvents(uniqueEvents);
+      storedNewEvents = true;
+      console.log(`Stored ${uniqueEvents.length} new incomplete events`);
+    }
+  }
+  
+  // Only update the latest block if we stored new events
+  if (storedNewEvents) {
+    await updateLatestProcessedBlock();
+  } else {
+    console.log('No new events stored, keeping current latest block');
+  }
+  
   return { events, incompleteEvents, stats };
 }
 

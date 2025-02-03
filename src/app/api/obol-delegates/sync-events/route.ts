@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { getLatestProcessedBlock, processEvents, storeDelegationEvents, storeIncompleteDelegationEvents } from '@/lib/services/obolDelegationEvents';
-import { kv } from '@vercel/kv';
+import { getLatestProcessedBlock, processEvents, storeDelegationEvents, storeIncompleteDelegationEvents, updateLatestProcessedBlock } from '@/lib/services/obolDelegationEvents';
 import type { DelegationEvent } from '@/lib/types';
 
 const ALCHEMY_URL = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
@@ -80,7 +79,9 @@ export async function POST() {
     if (allEvents.length > 0 || allIncompleteEvents.length > 0) {
       await storeDelegationEvents(allEvents);
       await storeIncompleteDelegationEvents(allIncompleteEvents);
-      await kv.set('obol-delegation-events-latest-block', latestBlock);
+      
+      // Update the latest block based on what's in our tables
+      await updateLatestProcessedBlock();
     }
 
     // Prepare response with detailed statistics and preview

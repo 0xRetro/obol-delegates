@@ -42,7 +42,10 @@ export async function buildMetrics(): Promise<ObolMetrics> {
     );
 
     // Count delegates with voting power and significant power
-    const delegatesWithPower = voteWeights.filter(w => Number(w.weight) > 0);
+    const delegatesWithPower = voteWeights.filter(w => 
+      Number(w.weight) > 0 && 
+      delegates.some(d => d.address.toLowerCase() === w.address.toLowerCase())
+    );
     const significantThreshold = totalVotingPower * 0.01; // 1% of total voting power
     const delegatesWithSignificantPower = voteWeights.filter(w => Number(w.weight) >= significantThreshold);
 
