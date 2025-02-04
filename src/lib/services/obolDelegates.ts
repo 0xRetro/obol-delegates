@@ -6,6 +6,7 @@ export interface ObolDelegate {
   name?: string;
   ens?: string;
   tallyProfile: boolean;
+  isSeekingDelegation: boolean;
 }
 
 // Cache delegates in memory to reduce Redis reads
@@ -47,15 +48,17 @@ export async function getDelegateList(forceRefresh: boolean = false): Promise<Ob
 /**
  * Add multiple delegates in a single operation
  */
-export async function addDelegates(delegates: Omit<ObolDelegate, 'tallyProfile'>[], tallyProfile: boolean = false): Promise<void> {
+export async function addDelegates(delegates: Omit<ObolDelegate, 'tallyProfile' | 'isSeekingDelegation'>[], tallyProfile: boolean = false): Promise<void> {
   const existingDelegates = await getDelegateList();
   let hasChanges = false;
   
   for (const delegate of delegates) {
-    if (!existingDelegates.some(d => d.address.toLowerCase() === delegate.address.toLowerCase())) {
+    const existingDelegate = existingDelegates.find(d => d.address.toLowerCase() === delegate.address.toLowerCase());
+    if (!existingDelegate) {
       const newDelegate: ObolDelegate = {
         ...delegate,
-        tallyProfile
+        tallyProfile,
+        isSeekingDelegation: false  // Always initialize to false for new delegates
       };
       
       existingDelegates.push(newDelegate);
@@ -73,10 +76,15 @@ export async function addDelegates(delegates: Omit<ObolDelegate, 'tallyProfile'>
 /**
  * Update delegate information based on Tally data
  */
-export async function updateDelegatesFromTally(tallyDelegates: { address: string; name?: string; ens?: string; }[]): Promise<void> {
+export async function updateDelegatesFromTally(tallyDelegates: { 
+  address: string; 
+  name?: string; 
+  ens?: string;
+  isSeekingDelegation?: boolean;
+}[]): Promise<void> {
   const delegates = await getDelegateList();
   let hasChanges = false;
-  const updates: Array<{ address: string; field: string; from: string | undefined; to: string | undefined }> = [];
+  const updates: Array<{ address: string; field: string; from: string | boolean | undefined; to: string | boolean | undefined }> = [];
 
   // Create a map of addresses to tally delegates for O(1) lookup
   const tallyDelegateMap = new Map(
@@ -94,8 +102,8 @@ export async function updateDelegatesFromTally(tallyDelegates: { address: string
         updates.push({
           address: delegate.address,
           field: 'tallyProfile',
-          from: 'false',
-          to: 'true'
+          from: false,
+          to: true
         });
         delegate.tallyProfile = true;
         updated = true;
@@ -125,7 +133,32 @@ export async function updateDelegatesFromTally(tallyDelegates: { address: string
         updated = true;
       }
 
+      // Always update isSeekingDelegation to match Tally
+      const newSeekingValue = tallyData.isSeekingDelegation ?? false;
+      if (delegate.isSeekingDelegation !== newSeekingValue) {
+        updates.push({
+          address: delegate.address,
+          field: 'isSeekingDelegation',
+          from: delegate.isSeekingDelegation,
+          to: newSeekingValue
+        });
+        delegate.isSeekingDelegation = newSeekingValue;
+        updated = true;
+      }
+
       if (updated) {
+        hasChanges = true;
+      }
+    } else if (delegate.tallyProfile) {
+      // If delegate has tallyProfile but wasn't found in Tally data, update their status
+      if (delegate.isSeekingDelegation !== false) {
+        updates.push({
+          address: delegate.address,
+          field: 'isSeekingDelegation',
+          from: delegate.isSeekingDelegation,
+          to: false
+        });
+        delegate.isSeekingDelegation = false;
         hasChanges = true;
       }
     }
@@ -136,7 +169,7 @@ export async function updateDelegatesFromTally(tallyDelegates: { address: string
     await redis.set(CACHE_KEYS.OBOL_DELEGATES, delegates);
     console.log(`Updated ${updates.length} delegate data points:`);
     updates.forEach(update => {
-      console.log(`- ${update.address}: ${update.field} changed from "${update.from || 'null'}" to "${update.to || 'null'}"`);
+      console.log(`- ${update.address}: ${update.field} changed from "${update.from}" to "${update.to}"`);
     });
   } else {
     console.log('No updates identified for delegate information');

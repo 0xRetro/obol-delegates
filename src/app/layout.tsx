@@ -12,8 +12,8 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Obol Delegates",
-  description: "View and manage Obol Network delegates",
+  title: "0xRetro.eth",
+  description: "A Web3 Playground",
   icons: {
     icon: [
       {

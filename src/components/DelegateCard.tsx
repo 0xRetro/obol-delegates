@@ -3,6 +3,7 @@ interface DelegateWithVotes {
   ens?: string;
   name?: string;
   tallyProfile: boolean;
+  isSeekingDelegation: boolean;
   votes: string;
   rank: number;
   percentage: string;
@@ -38,9 +39,10 @@ export default function DelegateCard({ delegate }: { delegate: DelegateWithVotes
                   href={`https://www.tally.xyz/gov/obol/delegate/${delegate.address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block mt-1 px-3 py-1 text-[10px] md:text-xs bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] transition-colors w-28 md:w-32 text-center"
+                  className="inline-flex items-center justify-center mt-1 px-3 py-1 text-[10px] md:text-xs bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] transition-colors w-28 md:w-32 whitespace-nowrap"
                 >
-                  Delegate Profile
+                  <span className={`w-1.5 h-1.5 rounded-full mr-1 ${delegate.isSeekingDelegation ? 'bg-green-700' : null }`} />
+                  <span className="truncate">Delegate Profile</span>
                 </a>
               )}
             </div>
@@ -66,7 +68,7 @@ export default function DelegateCard({ delegate }: { delegate: DelegateWithVotes
       </div>
       {delegate.address === "0x5E0936B2d7F151D02813aace33E545B970d9c634" && (
         <div className="text-[10px] md:text-xs lg:text-sm text-gray-500 mt-3 md:mt-4 italic text-center">
-          website made with ❤️ by retro
+          website made with ❤️
         </div>
       )}
     </div>

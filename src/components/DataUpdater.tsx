@@ -1,21 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-
 
 interface Props {
   timestamp: number;
 }
 
+interface LockStatus {
+  locked: boolean;
+  timestamp?: number;
+  instance?: string;
+}
+
 const UPDATE_STEPS = [
-  { id: 'tally', name: 'Syncing Tally Data' },
-  { id: 'events', name: 'Syncing Delegation Events' },
-  { id: 'delegates', name: 'Adding Event Delegates' },
-  { id: 'weights', name: 'Calculating Event Weights' },
-  { id: 'mismatches', name: 'Checking Mismatched Weights' },
-  { id: 'final', name: 'Final Weight Calculation' },
-  { id: 'metrics', name: 'Updating Metrics' }
+  //{ id: 'tally', name: 'Syncing Tally Data' },
+  { id: 'events', name: 'Grabbing New Delegation Events' },
+  { id: 'delegates', name: 'Identifying New Delegates' },
+  { id: 'weights', name: 'Mathing Event Weights' },
+  { id: 'mismatches', name: 'Comparing Contract to Event Totals' },
+  { id: 'final', name: 'Grabbing More Onchain Data' },
+  { id: 'metrics', name: 'Summarizing The Numbers' }
 ];
 
 export default function DataUpdater({ timestamp }: Props) {
@@ -26,23 +31,54 @@ export default function DataUpdater({ timestamp }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState<number>(0);
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [lockStatus, setLockStatus] = useState<LockStatus | null>(null);
+
+  const acquireUpdateLock = async (): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/update-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: `instance-${Math.random().toString(36).slice(2)}` })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        setLockStatus(data.currentStatus);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to acquire lock:', error);
+      return false;
+    }
+  };
+
+  const checkLockStatus = async (): Promise<LockStatus | null> => {
+    try {
+      const response = await fetch('/api/update-lock');
+      const status = await response.json();
+      setLockStatus(status);
+      return status;
+    } catch (error) {
+      console.error('Failed to check lock status:', error);
+      return null;
+    }
+  };
 
   const isDataStale = (timestamp: number): boolean => {
     console.log('DataUpdater: Checking data staleness for timestamp:', timestamp);
     
-    // Check for invalid, zero, or missing timestamp
     if (!timestamp || timestamp <= 0) {
       console.log('DataUpdater: Data is stale: Invalid or missing timestamp');
       return true;
     }
 
-    // Check if timestamp is unreasonably far in the future (potential error case)
     if (timestamp > Date.now() + (24 * 60 * 60 * 1000)) {
       console.log('DataUpdater: Data is stale: Timestamp is too far in the future');
       return true;
     }
 
-    // Check if data is older than 1 hour
     const age = Date.now() - timestamp;
     const isStale = age > 60 * 60 * 1000;
     console.log('DataUpdater: Data age (minutes):', Math.floor(age / (60 * 1000)));
@@ -50,7 +86,7 @@ export default function DataUpdater({ timestamp }: Props) {
     return isStale;
   };
 
-  const executeStep = async (step: number): Promise<boolean> => {
+  const executeStep = useCallback(async (step: number): Promise<boolean> => {
     try {
       console.log(`Executing step ${step + 1}/${UPDATE_STEPS.length}: ${UPDATE_STEPS[step].name}`);
       setCurrentStep(step);
@@ -58,9 +94,9 @@ export default function DataUpdater({ timestamp }: Props) {
       
       let endpoint = '';
       switch (currentAction.id) {
-        case 'tally':
-          endpoint = '/api/obol-delegates/sync-tally';
-          break;
+        //case 'tally':
+        //  endpoint = '/api/obol-delegates/sync-tally';
+        //  break;
         case 'events':
           endpoint = '/api/obol-delegates/sync-events';
           break;
@@ -94,10 +130,9 @@ export default function DataUpdater({ timestamp }: Props) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
       return false;
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // Wait a bit before starting the first check to ensure page is fully loaded
     if (!hasInitialized) {
       console.log('DataUpdater: Setting up initial delay');
       const initTimer = setTimeout(() => {
@@ -109,44 +144,76 @@ export default function DataUpdater({ timestamp }: Props) {
 
     const checkAndUpdate = async () => {
       console.log('DataUpdater: Checking if update is needed...');
-      // Prevent update if we've updated recently (within last 5 minutes)
+      
       if (Date.now() - lastUpdateTimestamp < 5 * 60 * 1000) {
         console.log('DataUpdater: Skipping update - updated recently');
         return;
       }
       
-      if (!isDataStale(timestamp) || isUpdating) return;
-
-      console.log('DataUpdater: Starting update sequence due to stale data');
-      setIsUpdating(true);
-      setError(null);
-
-      for (let i = 0; i < UPDATE_STEPS.length; i++) {
-        const success = await executeStep(i);
-        if (!success) {
-          console.log('DataUpdater: Update sequence failed at step:', UPDATE_STEPS[i].name);
-          setIsUpdating(false);
-          return;
-        }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!isDataStale(timestamp) || isUpdating) {
+        console.log('DataUpdater: Data is not stale or update is in progress');
+        return;
       }
 
-      console.log('DataUpdater: Update sequence completed successfully');
-      setLastUpdateTimestamp(Date.now());
-      setIsUpdating(false);
-      router.refresh();
+      // Single lock status check
+      const status = await checkLockStatus();
+      if (status?.locked) {
+        console.log('DataUpdater: Update already in progress:', status);
+        setLockStatus(status);
+        return;
+      }
+
+      console.log('DataUpdater: Attempting to acquire lock...');
+      const lockAcquired = await acquireUpdateLock();
+      if (!lockAcquired) {
+        console.log('DataUpdater: Failed to acquire lock');
+        return;
+      }
+
+      try {
+        console.log('DataUpdater: Starting update sequence');
+        setIsUpdating(true);
+        setError(null);
+
+        for (let i = 0; i < UPDATE_STEPS.length; i++) {
+          const success = await executeStep(i);
+          if (!success) {
+            console.log('DataUpdater: Update sequence failed at step:', UPDATE_STEPS[i].name);
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        setLastUpdateTimestamp(Date.now());
+        router.refresh();
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Unknown error occurred');
+      } finally {
+        setIsUpdating(false);
+        // Lock will auto-expire, no need to release
+      }
     };
 
     if (hasInitialized) {
       checkAndUpdate();
     }
-  }, [timestamp, isUpdating, router, lastUpdateTimestamp, hasInitialized]);
 
-  if (!isUpdating) return null;
+    // No more periodic status check
+    return () => {
+      if (isUpdating) {
+        // releaseLock();
+      }
+    };
+  }, [timestamp, isUpdating, router, lastUpdateTimestamp, hasInitialized, executeStep]);
+
+  // Only show UI if we're updating or if there's an active lock
+  if (!isUpdating && !lockStatus?.locked) return null;
 
   return (
     <div className="fixed bottom-4 left-4 bg-gray-800/50 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-gray-700 max-w-md z-50">
-      <h3 className="font-semibold mb-2 text-white">Updating Data...</h3>
+      <h3 className="font-semibold mb-2 text-white">
+        {isUpdating ? 'Updating Data...' : 'Update in Progress'}
+      </h3>
       <div className="space-y-2">
         {UPDATE_STEPS.map((step, index) => (
           <div 

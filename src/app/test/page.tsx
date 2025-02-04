@@ -16,6 +16,7 @@ interface InspectResponse {
       name: string | null;
       ens: string | null;
       tallyProfile: boolean;
+      isSeekingDelegation: boolean;
     };
     voteWeights?: {
       weight: string;
@@ -64,11 +65,16 @@ interface AnalyticsStats {
   flushInterval: number;
 }
 
+interface LockResponse {
+  success: boolean;
+  message?: string;
+}
+
 export default function TestPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | null>(null);
+  const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | LockResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsStats | null>(null);
@@ -400,11 +406,12 @@ export default function TestPage() {
   // Update transformInspectionData to match types exactly
   const transformInspectionData = (response: InspectResponse): DelegateWithVotes => {
     const data = response.data;
-    return {
+    return {  
       address: data.address,
       name: data.delegateInfo?.name || undefined,
       ens: data.delegateInfo?.ens || undefined,
       tallyProfile: data.delegateInfo?.tallyProfile || false,
+      isSeekingDelegation: data.delegateInfo?.isSeekingDelegation || false,
       votes: data.voteWeights?.weight || '0',
       rank: Math.floor(Math.random() * 50) + 1,
       percentage: '100.00',
@@ -423,6 +430,24 @@ export default function TestPage() {
       console.error('Error fetching analytics:', error);
     } finally {
       setAnalyticsLoading(false);
+    }
+  };
+
+  const clearLock = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      await fetch('/api/update-lock', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      setResult({ success: true, message: 'Lock cleared successfully' });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -612,6 +637,13 @@ export default function TestPage() {
             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
           >
             Clear Metrics
+          </button>
+
+          <button
+            onClick={clearLock}
+            className="bg-red-600 hover:bg-red-800 text-white font-bold py-2 px-4 rounded col-span-2"
+          >
+            Clear Update Lock
           </button>
         </div>
 

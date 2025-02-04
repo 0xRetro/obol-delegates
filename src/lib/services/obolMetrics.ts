@@ -2,7 +2,6 @@ import { kv } from '@vercel/kv';
 import { ObolMetrics } from '../types';
 import { getVoteWeights } from './obolVoteWeights';
 import { getDelegateList } from './obolDelegates';
-import { getDelegationEvents } from './obolDelegationEvents';
 
 const METRICS_KEY = 'obol-metrics';
 
@@ -23,59 +22,45 @@ export async function buildMetrics(): Promise<ObolMetrics> {
     // Clear existing metrics before building new ones
     await clearMetrics();
     
-    // Get all delegates and vote weights
-    const [delegates, voteWeights, { complete: events }] = await Promise.all([
+    // Get all required data
+    const [delegates, voteWeights] = await Promise.all([
       getDelegateList(),
-      getVoteWeights(),
-      getDelegationEvents()
+      getVoteWeights()
     ]);
-    console.log(`Processing ${voteWeights.length} vote weight records...`);
-    
+
     // Calculate total voting power
     const totalVotingPower = voteWeights.reduce((sum, w) => sum + Number(w.weight), 0);
 
-    // Get unique delegator addresses from events
+    // Get unique delegators
     const uniqueDelegators = new Set(
-      events
-        .filter(event => event.delegator !== null && event.delegator !== undefined)
-        .map(event => event.delegator!.toLowerCase())
+      voteWeights
+        .filter(w => Number(w.weight) > 0)
+        .map(w => w.address.toLowerCase())
     );
 
-    // Count delegates with voting power and significant power
-    const delegatesWithPower = voteWeights.filter(w => 
-      Number(w.weight) > 0 && 
-      delegates.some(d => d.address.toLowerCase() === w.address.toLowerCase())
+    // Count delegates with voting power
+    const delegatesWithPower = voteWeights.filter(w => Number(w.weight) > 0);
+
+    // Count delegates with significant power (>1%)
+    const delegatesWithSignificantPower = delegatesWithPower.filter(w => 
+      (Number(w.weight) / totalVotingPower) * 100 >= 1
     );
-    const significantThreshold = totalVotingPower * 0.01; // 1% of total voting power
-    const delegatesWithSignificantPower = voteWeights.filter(w => Number(w.weight) >= significantThreshold);
 
-    // Count Tally registered delegates and their voting power
-    const tallyDelegates = delegates.filter(d => d.tallyProfile);
-    const tallyVotingPower = voteWeights
-      .filter(w => tallyDelegates.some(d => d.address.toLowerCase() === w.address.toLowerCase()))
-      .reduce((sum, w) => sum + Number(w.weight), 0);
-
-    // Count Tally registered delegates
-    const tallyRegisteredDelegates = delegates.filter(delegate => delegate.tallyProfile).length;
+    // Count active delegates (seeking delegation)
+    const activeDelegatesCount = delegates.filter(delegate => delegate.isSeekingDelegation).length;
     
-    // Calculate Tally voting power percentage
-    const tallyVotingPowerPercentage = totalVotingPower > 0 
-      ? ((tallyVotingPower / totalVotingPower) * 100).toFixed(0)
-      : '0';
-    
-    console.log('Tally metrics:', {
+    console.log('Metrics:', {
       totalVotingPower,
-      tallyVotingPower,
-      tallyVotingPowerPercentage,
-      tallyRegisteredDelegates
+      activeDelegatesCount,
+      delegatesWithPower: delegatesWithPower.length,
+      delegatesWithSignificantPower: delegatesWithSignificantPower.length
     });
     
     const metrics: ObolMetrics = {
       totalVotingPower: totalVotingPower.toFixed(2),
       totalDelegates: delegates.length,
       totalDelegators: uniqueDelegators.size,
-      tallyRegisteredDelegates,
-      tallyVotingPowerPercentage,
+      activeDelegates: activeDelegatesCount,
       delegatesWithVotingPower: delegatesWithPower.length,
       delegatesWithSignificantPower: delegatesWithSignificantPower.length,
       timestamp: Date.now()

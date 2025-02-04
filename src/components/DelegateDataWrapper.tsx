@@ -3,7 +3,7 @@ import { getVoteWeights, VoteWeight } from '@/lib/services/obolVoteWeights';
 import ClientWrapper from '@/components/ClientWrapper';
 import DelegateCard from '@/components/DelegateCard';
 import ObolLogo from '@/components/ObolLogo';
-
+import { DelegateWithVotes } from '@/lib/types';
 const formatWholeNumber = (num: number): string => {
   return new Intl.NumberFormat('en-US', { 
     minimumFractionDigits: 0,
@@ -66,14 +66,6 @@ interface Delegate {
   tallyProfile: boolean;
 }
 
-interface DelegateWithVotes extends Delegate {
-  votes: string;
-  percentage: string;
-  uniqueDelegators?: number;
-  delegatorPercent?: string;
-  rank: number;
-}
-
 export default async function DelegateDataWrapper() {
   const { data, metrics, voteWeights } = await fetchDelegateData();
   
@@ -134,14 +126,14 @@ export default async function DelegateDataWrapper() {
                   <div className="flex items-start gap-2 md:gap-2 lg:gap-3">
                     <span className="text-[#2FE4AB] text-base md:text-lg lg:text-xl shrink-0">🗳️</span>
                     <div>
-                      <div className="font-medium text-sm md:text-sm lg:text-base">Delegates with Votes</div>
+                      <div className="font-medium text-sm md:text-sm lg:text-base">With Votes</div>
                       <div>
                         <span className="text-lg md:text-xl lg:text-2xl">
                           {formatWholeNumber(metrics?.delegatesWithVotingPower || 0)}
                         </span>
-                        <span className="text-xs md:text-sm lg:text-base text-gray-500 ml-1 md:ml-2 lg:ml-2 whitespace-normal md:whitespace-nowrap">
-                          {formatWholeNumber(metrics?.delegatesWithSignificantPower || 0)} with 1% or more
-                        </span>
+                      </div>
+                      <div className="text-xs md:text-xs lg:text-sm text-gray-500">
+                      {formatWholeNumber(metrics?.delegatesWithSignificantPower || 0)} with 1% or more 
                       </div>
                     </div>
                   </div>
@@ -153,30 +145,25 @@ export default async function DelegateDataWrapper() {
                     <span className="text-[#2FE4AB] text-base md:text-lg lg:text-xl shrink-0">👥</span>
                     <div>
                       <div className="font-medium text-sm md:text-sm lg:text-base">Total Delegates</div>
-                      <div>
+                      <div className="flex flex-col">
                         <span className="text-lg md:text-xl lg:text-2xl">
                           {formatWholeNumber(metrics?.totalDelegates || 0)}
                         </span>
-                        <span className="text-xs md:text-sm lg:text-base text-gray-500 ml-1 md:ml-2 lg:ml-2 whitespace-nowrap">
-                          {formatWholeNumber(metrics?.totalDelegators || 0)} delegators
+                        <span className="text-xs md:text-sm lg:text-sm text-gray-500 whitespace-nowrap">
+                        {formatWholeNumber(metrics?.totalDelegators || 0)} delegators
                         </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-2 md:gap-2 lg:gap-3">
-                    <span className="text-[#2FE4AB] text-base md:text-lg lg:text-xl shrink-0">✨</span>
+                    <span className="text-[#2FE4AB] text-base md:text-sm lg:text-sm shrink-0">✨</span>
                     <div>
-                      <div className="font-medium text-sm md:text-sm lg:text-base">Tally Registered</div>
+                      <div className="font-medium text-sm md:text-sm lg:text-base">Seeking Delegation</div>
                       <div>
                         <span className="text-lg md:text-xl lg:text-2xl">
-                          {formatWholeNumber(metrics?.tallyRegisteredDelegates || 0)}
+                          {formatWholeNumber(metrics?.activeDelegates || 0)}
                         </span>
-                        {metrics?.tallyVotingPowerPercentage && (
-                          <span className="text-xs md:text-sm lg:text-base text-gray-500 ml-1 md:ml-2 lg:ml-2 whitespace-normal md:whitespace-nowrap">
-                            {metrics.tallyVotingPowerPercentage}% of votes
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -184,8 +171,8 @@ export default async function DelegateDataWrapper() {
               </div>
 
               {/* Last Updated */}
-              <div className="flex items-center gap-2 mt-4 text-xs md:text-sm lg:text-base text-gray-500">
-                <span className="text-[#2FE4AB] text-base md:text-lg lg:text-xl">🕒</span>
+              <div className="flex items-center gap-2 mt-1 text-xs md:text-sm lg:text-base text-gray-500">
+                <span className="text-[#2FE4AB] text-sm md:text-sm lg:text-sm">🕒</span>
                 Last updated: {metrics ? formatLastUpdated(metrics.timestamp) : 'Unknown'}
                 {metrics && (
                   <span className={formatTimeUntilRefresh(metrics.timestamp).isOverdue ? 'text-red-400' : 'text-[#2FE4AB]'}>

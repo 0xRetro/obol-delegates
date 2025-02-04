@@ -5,6 +5,7 @@ interface TallyDelegate {
   address: string;
   ens?: string;
   name?: string;
+  isSeekingDelegation?: boolean;
 }
 
 interface TallyResponse {
@@ -16,6 +17,9 @@ interface TallyResponse {
           address: string;
           ens: string;
           name: string;
+        };
+        statement?: {
+          isSeekingDelegation: boolean;
         };
       }>;
       pageInfo: {
@@ -56,6 +60,9 @@ const DELEGATES_QUERY = `
             address
             ens
             name
+          }
+          statement {
+            isSeekingDelegation
           }
         }
       }
@@ -165,7 +172,8 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
       const delegates = response.data.delegates.nodes.map(node => ({
         address: node.account.address,
         ens: node.account.ens || undefined,
-        name: node.account.name || undefined
+        name: node.account.name || undefined,
+        isSeekingDelegation: node.statement?.isSeekingDelegation
       }));
       
       console.log(`Page size requested: ${API_CONFIG.pageSize}, received: ${delegates.length}`);
