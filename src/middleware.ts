@@ -9,10 +9,7 @@ export async function middleware(request: NextRequest) {
       request.method === 'GET') {
     
     // Track the page view
-    await trackPageView(
-      request.nextUrl.pathname,
-      request.headers.get('user-agent') || undefined
-    );
+    await trackPageView(request.nextUrl.pathname);
   }
 
   return NextResponse.next();

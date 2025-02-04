@@ -1,10 +1,5 @@
 import { kv } from '@vercel/kv';
 
-interface PageView {
-  path: string;
-  timestamp: number;
-}
-
 interface AnalyticsCache {
   pathCounts: Map<string, number>;  // path -> count
   totalViews: number;

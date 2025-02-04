@@ -50,6 +50,20 @@ interface MetricsResponse {
   error?: string;
 }
 
+interface AnalyticsStats {
+  cache: {
+    totalViews: number;
+    pathCounts: Record<string, number>;
+    lastFlush: number;
+    nextFlushIn: number;
+  };
+  database: {
+    totalViews: number;
+    pathCounts: Record<string, number>;
+  };
+  flushInterval: number;
+}
+
 export default function TestPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -57,7 +71,7 @@ export default function TestPage() {
   const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsStats | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
