@@ -31,10 +31,10 @@ interface TallyResponse {
 const API_CONFIG = {
   // Request timing
   timing: {
-    minDelay: 400,      // Minimum delay between requests
-    maxDelay: 2200,     // Maximum delay after rate limits
-    increaseDelayBy: 500, // Increase delay by this much on rate limit
-    decreaseDelayBy: 20,  // Decrease delay after consecutive successes
+    minDelay: 600,      // Minimum delay between requests
+    maxDelay: 2000,     // Maximum delay after rate limits
+    increaseDelayBy: 200, // Increase delay by this much on rate limit
+    decreaseDelayBy: 10,  // Decrease delay after consecutive successes
     maxRetries: 5,       // Maximum retries per rate limit
     maxDuration: 5 * 60 * 1000, // 5 minutes max total runtime
   },
@@ -71,14 +71,20 @@ const DELEGATES_QUERY = `
 // Core API request function
 const tallyQuery = async (query: string, variables: Record<string, unknown> = {}): Promise<TallyResponse> => {
   try {    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     const response = await fetch(TALLY_API_BASE_URL, {
       method: 'POST',
       headers: new Headers({
         'Content-Type': 'application/json',
         'Api-Key': TALLY_API_KEY || ''
       }),
-      body: JSON.stringify({ query, variables })
+      body: JSON.stringify({ query, variables }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     // Check for rate limit first
     if (response.status === 429) {
@@ -98,11 +104,16 @@ const tallyQuery = async (query: string, variables: Record<string, unknown> = {}
 
     // Handle other API errors
     if (!response.ok || data.errors) {
-      throw new Error(`Tally API error: ${response.status} - ${data.errors?.[0]?.message || response.statusText}`);
+      const errorMessage = data.errors?.[0]?.message || response.statusText;
+      console.error('Tally API error:', { status: response.status, error: errorMessage });
+      throw new Error(`Tally API error: ${response.status} - ${errorMessage}`);
     }
     
     return data;
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout after 30 seconds');
+    }
     throw error;
   }
 };
@@ -115,6 +126,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
   let currentDelay = API_CONFIG.timing.minDelay;
   let consecutiveSuccesses = 0;
   let rateLimitRetries = 0;
+  let lastError: Error | null = null;
   const startTime = Date.now();
 
   console.log('Starting delegate fetch...');
@@ -122,7 +134,11 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
   while (true) { // Run until we reach the end or hit max duration
     // Check total duration
     if (Date.now() - startTime > API_CONFIG.timing.maxDuration) {
-      console.warn(`Reached maximum duration of ${API_CONFIG.timing.maxDuration}ms. Returning partial results.`);
+      let message = `Reached maximum duration of ${API_CONFIG.timing.maxDuration}ms. Returning partial results.`;
+      if (lastError) {
+        message += ` Last error: ${lastError.message}`;
+      }
+      console.warn(message);
       return allDelegates;
     }
 
@@ -144,6 +160,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
       console.log('Request variables:', JSON.stringify(variables, null, 2));
       const response = await tallyQuery(DELEGATES_QUERY, variables);
       rateLimitRetries = 0; // Reset retry counter on success
+      lastError = null; // Clear last error on success
       
       const delegates = response.data.delegates.nodes.map(node => ({
         address: node.account.address,
@@ -184,6 +201,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
       
     } catch (error: unknown) {
       consecutiveSuccesses = 0;
+      lastError = error instanceof Error ? error : new Error('Unknown error');
       
       // Handle rate limits
       if (error instanceof Error && error.message.startsWith('RATE_LIMIT:')) {
@@ -207,9 +225,13 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
         continue;
       }
       
-      // For non-rate-limit errors, return partial results
+      // For non-rate-limit errors, log and return partial results
       console.error(`Error fetching delegates:`, error);
-      return allDelegates;
+      if (allDelegates.length > 0) {
+        console.log(`Returning ${allDelegates.length} delegates collected before error`);
+        return allDelegates;
+      }
+      throw error; // If we have no delegates yet, throw the error
     }
   }
 }; 

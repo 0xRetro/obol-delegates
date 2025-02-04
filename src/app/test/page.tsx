@@ -57,6 +57,8 @@ export default function TestPage() {
   const [result, setResult] = useState<ApiResponse<DelegateWithVotes> | InspectResponse | MetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [addressToInspect, setAddressToInspect] = useState<string>('');
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,6 +399,19 @@ export default function TestPage() {
     };
   };
 
+  const fetchAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      const response = await fetch('/api/analytics');
+      const data = await response.json();
+      setAnalyticsData(data.stats);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -628,6 +643,89 @@ export default function TestPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Analytics Section */}
+      <div className="mt-12">
+        <h2 className="text-xl font-semibold mb-4">Analytics Dashboard</h2>
+        <div className="flex gap-4 mb-4">
+          <button
+            onClick={() => fetchAnalytics()}
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99]"
+          >
+            Refresh Analytics
+          </button>
+        </div>
+
+        {analyticsLoading ? (
+          <div>Loading analytics...</div>
+        ) : analyticsData ? (
+          <div className="grid grid-cols-1 gap-8">
+            <div className="grid grid-cols-2 gap-8">
+              {/* Cache Stats */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-[#2FE4AB]">Memory Cache</h3>
+                  <span className="text-sm text-gray-400">
+                    Next Flush: {Math.floor(analyticsData.cache.nextFlushIn / 1000 / 60)} minutes
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-gray-400">Total Views</p>
+                    <p className="text-xl">{analyticsData.cache.totalViews}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Last Flush</p>
+                    <p>{new Date(analyticsData.cache.lastFlush).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Page Views</p>
+                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+                      {Object.entries(analyticsData.cache.pathCounts)
+                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .map(([path, count]) => (
+                          <div key={path} className="flex justify-between items-center py-1 hover:bg-gray-700 px-2 rounded">
+                            <span className="text-sm font-mono">{path}</span>
+                            <span className="text-[#2FE4AB]">{count as number}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Stats */}
+              <div className="bg-gray-800 p-6 rounded-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-[#2FE4AB]">Database</h3>
+                  <span className="text-sm text-gray-400">
+                    Flush Interval: {Math.floor(analyticsData.flushInterval / 1000 / 60 / 60)} hours
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-gray-400">Total Views</p>
+                    <p className="text-xl">{analyticsData.database.totalViews}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400">Page Views</p>
+                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+                      {Object.entries(analyticsData.database.pathCounts)
+                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .map(([path, count]) => (
+                          <div key={path} className="flex justify-between items-center py-1 hover:bg-gray-700 px-2 rounded">
+                            <span className="text-sm font-mono">{path}</span>
+                            <span className="text-[#2FE4AB]">{count as number}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {loading && (
