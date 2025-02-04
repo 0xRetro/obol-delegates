@@ -133,7 +133,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
     const variables = {
       input: {
         filters: { 
-          organizationId: "2413388957975839812"
+          governorId: "eip155:1:0x0b010000b7624eb9b3dfbc279673c76e9d29d5f7"
         },
         page: {
           limit: 20,
