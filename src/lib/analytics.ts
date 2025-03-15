@@ -1,116 +1,211 @@
 import { kv } from '@vercel/kv';
+import type { NextRequest } from 'next/server';
 
-interface AnalyticsCache {
-  pathCounts: Map<string, number>;  // path -> count
-  totalViews: number;
-  lastFlush: number;
+// Define interface for our visit records
+interface VisitRecord {
+  timestamp: number;
+  path: string;
+  referrer?: string;
+  userAgent?: string;
+  country?: string;
 }
 
-// In-memory cache
-const cache: AnalyticsCache = {
-  pathCounts: new Map(),
-  totalViews: 0,
-  lastFlush: Date.now()
+// Analytics keys
+const KEYS = {
+  RAW_VISITS: 'analytics:raw_visits'
 };
 
-// Constants
-const FLUSH_INTERVAL = 12 * 60 * 60 * 1000; // Flush to DB every 12 hours
+// Maximum number of raw visits to keep
+const MAX_RAW_VISITS = 10000;
 
-// Initialize cache from DB
-async function initializeCache() {
+// Time window for deduplication (2 minutes in milliseconds)
+const DEDUPLICATION_WINDOW = 2 * 60 * 1000;
+
+// Number of recent visits to check for deduplication
+const RECENT_VISITS_TO_CHECK = 10;
+
+// Check if a visit is likely a refresh/duplicate of an existing visit
+async function isDuplicateVisit(newVisit: VisitRecord): Promise<boolean> {
   try {
-    // Get total views
-    cache.totalViews = Number(await kv.get('analytics:total_views')) || 0;
+    // Get recent visits to check
+    const recentVisits = await kv.lrange(KEYS.RAW_VISITS, -RECENT_VISITS_TO_CHECK, -1) || [];
     
-    // Get path counts
-    const pathKeys = await kv.keys('analytics:path_views:*');
-    for (const key of pathKeys) {
-      const path = key.replace('analytics:path_views:', '');
-      cache.pathCounts.set(path, Number(await kv.get(key)) || 0);
-    }
+    // Parse the visits
+    const parsedVisits: VisitRecord[] = recentVisits.map(v => 
+      typeof v === 'string' ? JSON.parse(v) : v
+    );
     
-    console.log('Analytics cache initialized');
+    // Check if any recent visit matches our duplicate criteria
+    return parsedVisits.some(existingVisit => {
+      // Must be within the time window
+      const timeDifference = newVisit.timestamp - existingVisit.timestamp;
+      if (timeDifference < 0 || timeDifference > DEDUPLICATION_WINDOW) return false;
+      
+      // Must have same user agent
+      if (existingVisit.userAgent !== newVisit.userAgent) return false;
+      
+      // Must have same country
+      if (existingVisit.country !== newVisit.country) return false;
+      
+      // Check referrer - if the new visit's referrer is our own site, likely a refresh
+      const isInternalNavigation = newVisit.referrer?.includes('0xretro.xyz') || 
+                                  newVisit.referrer?.includes('localhost:3000');
+      
+      return isInternalNavigation;
+    });
   } catch (error) {
-    console.error('Failed to initialize analytics cache:', error);
+    console.error('Error checking for duplicate visit:', error);
+    return false; // If error, assume it's not a duplicate
   }
 }
 
-// Flush cache to DB
-async function flushCache() {
-  const now = Date.now();
-  if (now - cache.lastFlush < FLUSH_INTERVAL) {
-    return; // Not time to flush yet
-  }
-  
+/**
+ * Record a page view directly to the database
+ * No cookies or in-memory cache used
+ * Includes deduplication for likely refreshes
+ */
+export async function trackPageView(request: NextRequest) {
   try {
-    console.log('Flushing analytics cache to database...');
-    
-    // Update total views
-    await kv.set('analytics:total_views', cache.totalViews);
-    
-    // Update path counts
-    for (const [path, count] of cache.pathCounts.entries()) {
-      await kv.set(`analytics:path_views:${path}`, count);
+    // Only track root path visits
+    if (request.nextUrl.pathname === '/') {
+      // Create visit record
+      const visitRecord: VisitRecord = {
+        timestamp: Date.now(),
+        path: '/',
+        referrer: request.headers.get('referer') || 'direct',
+        userAgent: request.headers.get('user-agent') || 'unknown',
+        country: 'unknown'
+      };
+
+      // Check if this visit appears to be a refresh/duplicate
+      const isDuplicate = await isDuplicateVisit(visitRecord);
+      
+      // Only store if it's not a likely duplicate
+      if (!isDuplicate) {
+        // Store the raw visit data
+        await kv.rpush(KEYS.RAW_VISITS, JSON.stringify(visitRecord));
+        
+        // Optionally trim the raw visits list if it gets too long
+        const listLength = await kv.llen(KEYS.RAW_VISITS);
+        if (listLength > MAX_RAW_VISITS) {
+          await kv.ltrim(KEYS.RAW_VISITS, listLength - MAX_RAW_VISITS, -1);
+        }
+      }
     }
-    
-    cache.lastFlush = now;
-    console.log('Analytics cache flushed successfully');
-  } catch (error) {
-    console.error('Failed to flush analytics cache:', error);
-  }
-}
-
-// Initialize cache on module load
-initializeCache().catch(console.error);
-
-export async function trackPageView(path: string) {
-  try {
-    // Update counters in cache
-    cache.totalViews++;
-    cache.pathCounts.set(path, (cache.pathCounts.get(path) || 0) + 1);
-    
-    // Try to flush if enough time has passed
-    await flushCache();
   } catch (error) {
     console.error('Failed to track page view:', error);
   }
 }
 
-export async function getAnalytics() {
-  // Try to flush cache before getting analytics
-  await flushCache();
-  
-  return {
-    totalViews: cache.totalViews,
-    pathCounts: Object.fromEntries(cache.pathCounts)
-  };
+/**
+ * Get basic analytics from the database
+ */
+export async function getBasicAnalytics() {
+  try {
+    // Get raw visits data
+    const rawVisits = await getRawVisits(MAX_RAW_VISITS);
+    
+    // Calculate total views from actual raw visits count
+    const totalViews = rawVisits.length;
+    
+    // Calculate unique visitors (unique combinations of userAgent+country)
+    const uniqueVisitorSet = new Set();
+    const pathCounts: Record<string, number> = {};
+    
+    rawVisits.forEach(visit => {
+      // Track unique visitors
+      const visitorKey = `${visit.userAgent}|${visit.country}`;
+      uniqueVisitorSet.add(visitorKey);
+      
+      // Track path counts
+      pathCounts[visit.path] = (pathCounts[visit.path] || 0) + 1;
+    });
+    
+    const totalUniqueVisitors = uniqueVisitorSet.size;
+    
+    return {
+      totalViews,
+      totalUniqueVisitors,
+      pathCounts
+    };
+  } catch (error) {
+    console.error('Failed to get analytics:', error);
+    return { totalViews: 0, totalUniqueVisitors: 0, pathCounts: {} };
+  }
 }
 
-export async function getCacheAndDbStats() {
-  // Get current cache state
-  const cacheStats = {
-    totalViews: cache.totalViews,
-    pathCounts: Object.fromEntries(cache.pathCounts),
-    lastFlush: cache.lastFlush,
-    nextFlushIn: Math.max(0, FLUSH_INTERVAL - (Date.now() - cache.lastFlush))
-  };
-
-  // Get current DB state
-  const dbStats = {
-    totalViews: Number(await kv.get('analytics:total_views')) || 0,
-    pathCounts: {} as Record<string, number>
-  };
-
-  // Get path counts from DB
-  const pathKeys = await kv.keys('analytics:path_views:*');
-  for (const key of pathKeys) {
-    const path = key.replace('analytics:path_views:', '');
-    dbStats.pathCounts[path] = Number(await kv.get(key)) || 0;
+/**
+ * Get detailed visit data for analysis
+ */
+export async function getRawVisits(limit: number = 1000) {
+  try {
+    const visits = await kv.lrange(KEYS.RAW_VISITS, -limit, -1) || [];
+    return visits.map(visit => typeof visit === 'string' ? JSON.parse(visit) : visit);
+  } catch (error) {
+    console.error('Failed to get raw visits:', error);
+    return [];
   }
+}
 
-  return {
-    cache: cacheStats,
-    database: dbStats,
-    flushInterval: FLUSH_INTERVAL
-  };
+/**
+ * Get summarized analytics by time period
+ */
+export async function getVisitsByDay(days: number = 30) {
+  try {
+    // Get raw visits
+    const rawVisits = await getRawVisits(MAX_RAW_VISITS);
+    
+    // Group by day
+    const dailyVisits: Record<string, number> = {};
+    const uniqueVisitorsByDay: Record<string, number> = {};
+    const now = Date.now();
+    const cutoffTime = now - (days * 24 * 60 * 60 * 1000);
+    
+    // Track unique visitors by day
+    const visitorsByDay: Record<string, Set<string>> = {};
+    
+    rawVisits.forEach(visit => {
+      if (visit.timestamp > cutoffTime) {
+        const day = new Date(visit.timestamp).toISOString().split('T')[0];
+        
+        // Count total visits
+        dailyVisits[day] = (dailyVisits[day] || 0) + 1;
+        
+        // Track unique visitors (userAgent+country combination)
+        if (!visitorsByDay[day]) {
+          visitorsByDay[day] = new Set();
+        }
+        const visitorKey = `${visit.userAgent}|${visit.country}`;
+        visitorsByDay[day].add(visitorKey);
+      }
+    });
+    
+    // Convert Sets to counts
+    Object.entries(visitorsByDay).forEach(([day, uniqueSet]) => {
+      uniqueVisitorsByDay[day] = uniqueSet.size;
+    });
+    
+    return {
+      dailyVisits,
+      uniqueVisitorsByDay
+    };
+  } catch (error) {
+    console.error('Failed to get visits by day:', error);
+    return { dailyVisits: {}, uniqueVisitorsByDay: {} };
+  }
+}
+
+/**
+ * Clear all analytics data
+ */
+export async function clearAnalytics() {
+  try {
+    // Only clear raw visits data
+    await kv.del(KEYS.RAW_VISITS);
+    
+    console.log('Analytics data cleared');
+  } catch (error) {
+    console.error('Failed to clear analytics:', error);
+    throw error;
+  }
 } 

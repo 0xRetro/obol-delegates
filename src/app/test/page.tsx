@@ -52,17 +52,22 @@ interface MetricsResponse {
 }
 
 interface AnalyticsStats {
-  cache: {
+  basic: {
     totalViews: number;
-    pathCounts: Record<string, number>;
-    lastFlush: number;
-    nextFlushIn: number;
-  };
-  database: {
-    totalViews: number;
+    totalUniqueVisitors: number;
     pathCounts: Record<string, number>;
   };
-  flushInterval: number;
+  rawVisits: Array<{
+    timestamp: number;
+    path: string;
+    referrer?: string;
+    userAgent?: string;
+    country?: string;
+  }>;
+  visitsByDay: {
+    dailyVisits: Record<string, number>;
+    uniqueVisitorsByDay: Record<string, number>;
+  };
 }
 
 interface LockResponse {
@@ -708,27 +713,26 @@ export default function TestPage() {
         ) : analyticsData ? (
           <div className="grid grid-cols-1 gap-8">
             <div className="grid grid-cols-2 gap-8">
-              {/* Cache Stats */}
+              {/* Basic Stats */}
               <div className="bg-gray-800 p-6 rounded-lg">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-[#2FE4AB]">Memory Cache</h3>
-                  <span className="text-sm text-gray-400">
-                    Next Flush: {Math.floor(analyticsData.cache.nextFlushIn / 1000 / 60)} minutes
-                  </span>
+                  <h3 className="text-lg font-medium text-[#2FE4AB]">Basic Stats</h3>
                 </div>
                 <div className="space-y-4">
-                  <div>
-                    <p className="text-gray-400">Total Views</p>
-                    <p className="text-xl">{analyticsData.cache.totalViews}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400">Last Flush</p>
-                    <p>{new Date(analyticsData.cache.lastFlush).toLocaleString()}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-gray-400">Total Views</p>
+                      <p className="text-xl">{analyticsData.basic.totalViews}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">Unique Visitors</p>
+                      <p className="text-xl">{analyticsData.basic.totalUniqueVisitors}</p>
+                    </div>
                   </div>
                   <div>
                     <p className="text-gray-400">Page Views</p>
                     <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-                      {Object.entries(analyticsData.cache.pathCounts)
+                      {Object.entries(analyticsData.basic.pathCounts)
                         .sort(([, a], [, b]) => (b as number) - (a as number))
                         .map(([path, count]) => (
                           <div key={path} className="flex justify-between items-center py-1 hover:bg-gray-700 px-2 rounded">
@@ -741,33 +745,62 @@ export default function TestPage() {
                 </div>
               </div>
 
-              {/* Database Stats */}
+              {/* Daily Visits */}
               <div className="bg-gray-800 p-6 rounded-lg">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-[#2FE4AB]">Database</h3>
-                  <span className="text-sm text-gray-400">
-                    Flush Interval: {Math.floor(analyticsData.flushInterval / 1000 / 60 / 60)} hours
-                  </span>
+                  <h3 className="text-lg font-medium text-[#2FE4AB]">Daily Visits (Last 30 Days)</h3>
                 </div>
                 <div className="space-y-4">
-                  <div>
-                    <p className="text-gray-400">Total Views</p>
-                    <p className="text-xl">{analyticsData.database.totalViews}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400">Page Views</p>
-                    <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
-                      {Object.entries(analyticsData.database.pathCounts)
-                        .sort(([, a], [, b]) => (b as number) - (a as number))
-                        .map(([path, count]) => (
-                          <div key={path} className="flex justify-between items-center py-1 hover:bg-gray-700 px-2 rounded">
-                            <span className="text-sm font-mono">{path}</span>
-                            <span className="text-[#2FE4AB]">{count as number}</span>
+                  <div className="space-y-2 mt-2 max-h-60 overflow-y-auto">
+                    {Object.entries(analyticsData.visitsByDay.dailyVisits)
+                      .sort(([a], [b]) => b.localeCompare(a)) // Sort by date, newest first
+                      .map(([date, count]) => {
+                        const uniqueCount = analyticsData.visitsByDay.uniqueVisitorsByDay[date] || 0;
+                        return (
+                          <div key={date} className="grid grid-cols-3 items-center py-1 hover:bg-gray-700 px-2 rounded">
+                            <span className="text-sm font-mono">{date}</span>
+                            <div className="flex items-center">
+                              <span className="mr-1 text-gray-400">Total:</span>
+                              <span className="text-[#2FE4AB]">{count}</span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="mr-1 text-gray-400">Unique:</span>
+                              <span className="text-[#2FE4AB]">{uniqueCount}</span>
+                            </div>
                           </div>
-                        ))}
-                    </div>
+                        );
+                      })}
                   </div>
                 </div>
+              </div>
+            </div>
+            
+            {/* Recent Visits */}
+            <div className="bg-gray-800 p-6 rounded-lg mt-8">
+              <h3 className="text-lg font-medium text-[#2FE4AB] mb-4">Recent Visits ({analyticsData.rawVisits.length} shown)</h3>
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left pb-2">Time</th>
+                      <th className="text-left pb-2">Path</th>
+                      <th className="text-left pb-2">Referrer</th>
+                      <th className="text-left pb-2">Country</th>
+                      <th className="text-left pb-2">Browser</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analyticsData.rawVisits.map((visit, index) => (
+                      <tr key={index} className="border-b border-gray-700 hover:bg-gray-700">
+                        <td className="py-2">{new Date(visit.timestamp).toLocaleString()}</td>
+                        <td className="py-2 font-mono">{visit.path}</td>
+                        <td className="py-2">{visit.referrer}</td>
+                        <td className="py-2">{visit.country}</td>
+                        <td className="py-2 truncate max-w-xs">{visit.userAgent}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

@@ -8,8 +8,8 @@ export async function middleware(request: NextRequest) {
       !request.nextUrl.pathname.includes('.') &&
       request.method === 'GET') {
     
-    // Track the page view
-    await trackPageView(request.nextUrl.pathname);
+    // Track the page view by passing the full request object
+    await trackPageView(request);
   }
 
   return NextResponse.next();
