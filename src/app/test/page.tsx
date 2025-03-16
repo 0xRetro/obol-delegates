@@ -5,6 +5,7 @@ import { DelegationEvent } from '@/lib/types';
 import DelegateCard from '@/components/DelegateCard';
 import ObolPhoneLoader from '@/components/LoadingAnimation';
 import ObolLogo from '@/components/ObolLogo';
+import Link from 'next/link';
 
 // Remove the duplicate interface and use the one from DelegateCard
 type DelegateWithVotes = Parameters<typeof DelegateCard>[0]['delegate'];
@@ -479,7 +480,6 @@ export default function TestPage() {
   // Update transformInspectionData to match types exactly
   const transformInspectionData = (response: InspectResponse): DelegateWithVotes => {
     const data = response.data;
-    const eventWeight = data.voteWeights?.eventCalcWeight;
     const weight = data.voteWeights?.weight || '0';
     
     // Calculate percentage based on weight
@@ -571,12 +571,12 @@ export default function TestPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">API Test Page</h1>
         <div className="flex gap-4">
-          <a
+          <Link
             href="/"
             className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] transition-colors"
           >
             Go to Home
-          </a>
+          </Link>
           <button
             onClick={handleLogout}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"

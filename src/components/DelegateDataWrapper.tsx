@@ -73,9 +73,6 @@ export default async function DelegateDataWrapper() {
     throw new Error('Invalid data format received');
   }
 
-  // Create a map of address to vote weight for faster lookups
-  const weightMap = new Map(voteWeights.map((w: VoteWeight) => [w.address.toLowerCase(), w.weight]));
-  
   // Calculate percentages and add ranks using vote weights
   const totalVotes = voteWeights.reduce((sum: number, w: VoteWeight) => sum + Number(w.weight), 0);
   
