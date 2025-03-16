@@ -49,8 +49,16 @@ export async function getDelegateList(forceRefresh: boolean = false): Promise<Ob
  * Add multiple delegates in a single operation
  */
 export async function addDelegates(delegates: Omit<ObolDelegate, 'tallyProfile' | 'isSeekingDelegation'>[], tallyProfile: boolean = false): Promise<void> {
+  if (delegates.length === 0) {
+    console.log('ℹ️ Delegates: No delegates to add');
+    return;
+  }
+
+  console.log(`🔄 Delegates: Adding ${delegates.length} delegates (tallyProfile=${tallyProfile})`);
   const existingDelegates = await getDelegateList();
   let hasChanges = false;
+  let addedCount = 0;
+  let skippedCount = 0;
   
   for (const delegate of delegates) {
     const existingDelegate = existingDelegates.find(d => d.address.toLowerCase() === delegate.address.toLowerCase());
@@ -63,13 +71,18 @@ export async function addDelegates(delegates: Omit<ObolDelegate, 'tallyProfile' 
       
       existingDelegates.push(newDelegate);
       hasChanges = true;
+      addedCount++;
+    } else {
+      skippedCount++;
     }
   }
   
   if (hasChanges) {
     delegatesCache = existingDelegates;
     await redis.set(CACHE_KEYS.OBOL_DELEGATES, existingDelegates);
-    console.log(`Added ${delegates.length} new delegates`);
+    console.log(`✅ Delegates: Added ${addedCount} new delegates (skipped ${skippedCount} existing)`);
+  } else {
+    console.log(`ℹ️ Delegates: All ${skippedCount} delegates already exist in database`);
   }
 }
 

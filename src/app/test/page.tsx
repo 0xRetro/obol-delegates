@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DelegationEvent } from '@/lib/types';
 import DelegateCard from '@/components/DelegateCard';
 import ObolPhoneLoader from '@/components/LoadingAnimation';
@@ -63,6 +63,7 @@ interface AnalyticsStats {
     referrer?: string;
     userAgent?: string;
     country?: string;
+    city?: string;
   }>;
   visitsByDay: {
     dailyVisits: Record<string, number>;
@@ -75,6 +76,20 @@ interface LockResponse {
   message?: string;
 }
 
+// Sample delegate data for development and testing
+const sampleDelegate: DelegateWithVotes = {
+  address: '0x5E0936B2d7F151D02813aace33E545B970d9c634',
+  name: 'Demo Delegate',
+  ens: 'demo.eth',
+  tallyProfile: true,
+  isSeekingDelegation: true,
+  votes: '1250000.0',
+  rank: 3,
+  percentage: '12.75',
+  uniqueDelegators: 42,
+  delegatorPercent: '8.5'
+};
+
 export default function TestPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -84,16 +99,62 @@ export default function TestPage() {
   const [addressToInspect, setAddressToInspect] = useState<string>('');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsStats | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  
+  // State for the delegate card - allows toggling between sample and inspected data
+  const [useInspectedDelegate, setUseInspectedDelegate] = useState(false);
+  const [currentDelegate, setCurrentDelegate] = useState<DelegateWithVotes>(sampleDelegate);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Using environment variable through Next.js public runtime config
-    if (password === process.env.NEXT_PUBLIC_TEST_PAGE_PASSWORD) {
-      setIsAuthenticated(true);
-      setError('');
-    } else {
-      setError('Invalid password');
+  // Check for existing token on component mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('testPageAuthToken');
+    const expiresAt = localStorage.getItem('testPageAuthExpires');
+    
+    if (storedToken && expiresAt) {
+      // Verify token hasn't expired
+      if (Number(expiresAt) > Date.now()) {
+        setIsAuthenticated(true);
+      } else {
+        // Clear expired token
+        localStorage.removeItem('testPageAuthToken');
+        localStorage.removeItem('testPageAuthExpires');
+      }
     }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Store token in localStorage
+        localStorage.setItem('testPageAuthToken', data.token);
+        localStorage.setItem('testPageAuthExpires', data.expiresAt);
+        setIsAuthenticated(true);
+      } else {
+        setError(data.error || 'Authentication failed');
+      }
+    } catch (err) {
+      setError('Failed to authenticate. Please try again.');
+      console.error('Auth error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('testPageAuthToken');
+    localStorage.removeItem('testPageAuthExpires');
+    setIsAuthenticated(false);
   };
 
   const testGetDelegates = async () => {
@@ -330,6 +391,13 @@ export default function TestPage() {
       const response = await fetch(`/api/obol-delegates/inspect-address?address=${addressToInspect}`);
       const data = await response.json();
       setResult(data);
+      
+      // Automatically update the delegate card when inspection happens
+      if (data.success && isInspectResponse(data)) {
+        const transformedDelegate = transformInspectionData(data);
+        setCurrentDelegate(transformedDelegate);
+        setUseInspectedDelegate(true);
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -411,18 +479,30 @@ export default function TestPage() {
   // Update transformInspectionData to match types exactly
   const transformInspectionData = (response: InspectResponse): DelegateWithVotes => {
     const data = response.data;
+    const eventWeight = data.voteWeights?.eventCalcWeight;
+    const weight = data.voteWeights?.weight || '0';
+    
+    // Calculate percentage based on weight
+    const percentage = ((Number(weight) / (Number(weight) * 2)) * 100).toFixed(2);
+    
     return {  
       address: data.address,
       name: data.delegateInfo?.name || undefined,
       ens: data.delegateInfo?.ens || undefined,
       tallyProfile: data.delegateInfo?.tallyProfile || false,
       isSeekingDelegation: data.delegateInfo?.isSeekingDelegation || false,
-      votes: data.voteWeights?.weight || '0',
+      votes: weight,
       rank: Math.floor(Math.random() * 50) + 1,
-      percentage: '100.00',
-      uniqueDelegators: Math.floor(Math.random() * 100),
-      delegatorPercent: Math.random().toFixed(2)
+      percentage: percentage,
+      uniqueDelegators: data.delegationEvents.complete.length,
+      delegatorPercent: ((data.delegationEvents.complete.length / (data.delegationEvents.complete.length + 5)) * 100).toFixed(2)
     };
+  };
+
+  // Reset to sample delegate
+  const resetToSampleDelegate = () => {
+    setUseInspectedDelegate(false);
+    setCurrentDelegate(sampleDelegate);
   };
 
   const fetchAnalytics = async () => {
@@ -469,15 +549,17 @@ export default function TestPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
                 className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600 focus:border-[#2FE4AB] focus:outline-none"
+                disabled={loading}
               />
             </div>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
             <button
               type="submit"
-              className="w-full bg-[#2FE4AB] text-black py-2 px-4 rounded hover:bg-[#29cd99] transition-colors"
+              className="w-full bg-[#2FE4AB] text-black font-bold p-2 rounded hover:bg-[#29cd99] disabled:opacity-60"
+              disabled={loading}
             >
-              Submit
+              {loading ? 'Authenticating...' : 'Login'}
             </button>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
           </form>
         </div>
       </div>
@@ -486,7 +568,23 @@ export default function TestPage() {
 
   return (
     <div className="p-8 bg-gray-900 text-white min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">API Test Page</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">API Test Page</h1>
+        <div className="flex gap-4">
+          <a
+            href="/"
+            className="px-4 py-2 bg-[#2FE4AB] text-black rounded hover:bg-[#29cd99] transition-colors"
+          >
+            Go to Home
+          </a>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
       
       <div className="space-y-4 mb-8">
         {/* Grid container */}
@@ -652,6 +750,18 @@ export default function TestPage() {
           </button>
         </div>
 
+        {/* Display result of API calls */}
+        {result && (
+          <div className="mt-4 space-y-8">
+            <div>
+              <h2 className="text-xl font-semibold mb-2">Raw Inspection Data:</h2>
+              <pre className="bg-gray-800 border border-gray-700 p-4 rounded overflow-auto max-h-[500px] text-gray-300">
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
         {/* Animation Components Preview */}
         <div className="my-12 space-y-8">
           <h2 className="text-xl font-semibold mb-6">Animation Components Preview</h2>
@@ -672,6 +782,35 @@ export default function TestPage() {
                 <ObolLogo />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Delegate Card Preview */}
+        <div className="mt-8 mb-8">
+          <h2 className="text-xl font-semibold mb-4">Delegate Card Preview:</h2>
+          <div className="flex gap-4 mb-4">
+            <button
+              onClick={resetToSampleDelegate}
+              className={`px-4 py-2 ${!useInspectedDelegate ? 'bg-[#2FE4AB] text-black' : 'bg-gray-700 text-white'} rounded hover:bg-opacity-90 transition-colors`}
+            >
+              Use Sample Data
+            </button>
+            {result && isInspectResponse(result) && (
+              <button
+                onClick={() => {
+                  // Transform the data again when button is clicked
+                  const transformedDelegate = transformInspectionData(result);
+                  setCurrentDelegate(transformedDelegate);
+                  setUseInspectedDelegate(true);
+                }}
+                className={`px-4 py-2 ${useInspectedDelegate ? 'bg-[#2FE4AB] text-black' : 'bg-gray-700 text-white'} rounded hover:bg-opacity-90 transition-colors`}
+              >
+                Use Inspected Data
+              </button>
+            )}
+          </div>
+          <div className="w-full">
+            <DelegateCard delegate={currentDelegate} />
           </div>
         </div>
 
@@ -786,6 +925,7 @@ export default function TestPage() {
                       <th className="text-left pb-2">Path</th>
                       <th className="text-left pb-2">Referrer</th>
                       <th className="text-left pb-2">Country</th>
+                      <th className="text-left pb-2">City</th>
                       <th className="text-left pb-2">Browser</th>
                     </tr>
                   </thead>
@@ -796,6 +936,7 @@ export default function TestPage() {
                         <td className="py-2 font-mono">{visit.path}</td>
                         <td className="py-2">{visit.referrer}</td>
                         <td className="py-2">{visit.country}</td>
+                        <td className="py-2">{visit.city || 'unknown'}</td>
                         <td className="py-2 truncate max-w-xs">{visit.userAgent}</td>
                       </tr>
                     ))}
@@ -807,6 +948,7 @@ export default function TestPage() {
         ) : null}
       </div>
 
+      {/* Loading and error states */}
       {loading && (
         <div className="text-gray-400 mb-4">Loading...</div>
       )}
@@ -814,27 +956,6 @@ export default function TestPage() {
       {error && (
         <div className="text-red-400 mb-4">
           Error: {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="mt-4 space-y-8">
-          {/* Only show delegate card for inspect address results */}
-          {isInspectResponse(result) && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Delegate Card Preview:</h2>
-              <div className="px-3 md:px-3 lg:px-4 py-3 md:py-3 lg:py-4 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors w-full bg-gray-800">
-                <DelegateCard delegate={transformInspectionData(result)} />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h2 className="text-xl font-semibold mb-2">Raw Inspection Data:</h2>
-            <pre className="bg-gray-800 border border-gray-700 p-4 rounded overflow-auto max-h-[500px] text-gray-300">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
         </div>
       )}
     </div>

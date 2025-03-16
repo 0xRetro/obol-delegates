@@ -141,7 +141,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
   while (true) { // Run until we reach the end or hit max duration
     // Check total duration
     if (Date.now() - startTime > API_CONFIG.timing.maxDuration) {
-      let message = `Reached maximum duration of ${API_CONFIG.timing.maxDuration}ms. Returning partial results.`;
+      let message = `⏱️ Tally API: Max duration reached (${API_CONFIG.timing.maxDuration}ms). Returning ${allDelegates.length} delegates.`;
       if (lastError) {
         message += ` Last error: ${lastError.message}`;
       }
@@ -150,7 +150,9 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
     }
 
     try {
-      console.log(`Fetching page ${pageCount + 1} with delay ${currentDelay}ms...`);
+      // Format compact request info
+      const pageInfo = `Page ${pageCount + 1}${currentCursor ? ` (after: ${currentCursor.substring(0, 8)}...)` : ''}`;
+      console.log(`📥 Tally API: ${pageInfo} | Delay: ${currentDelay}ms`);
       
       const variables = {
         input: {
@@ -164,7 +166,11 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
         }
       };
 
-      console.log('Request variables:', JSON.stringify(variables, null, 2));
+      // Only log variables in development mode to reduce clutter
+      //if (process.env.NODE_ENV === 'development') {
+      //  console.log('Request variables:', JSON.stringify(variables, null, 2));
+      //}
+      
       const response = await tallyQuery(DELEGATES_QUERY, variables);
       rateLimitRetries = 0; // Reset retry counter on success
       lastError = null; // Clear last error on success
@@ -176,8 +182,6 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
         isSeekingDelegation: node.statement?.isSeekingDelegation
       }));
       
-      console.log(`Page size requested: ${API_CONFIG.pageSize}, received: ${delegates.length}`);
-      
       allDelegates.push(...delegates);
       pageCount++;
       consecutiveSuccesses++;
@@ -188,23 +192,23 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
           API_CONFIG.timing.minDelay,
           currentDelay - API_CONFIG.timing.decreaseDelayBy
         );
-        console.log(`Three consecutive successes - decreasing delay to ${currentDelay}ms`);
+        // Only log delay changes, not every success
+        console.log(`✅ Tally API: Reducing delay to ${currentDelay}ms (3 consecutive successes)`);
       }
       
-      console.log(`Received ${delegates.length} delegates (total: ${allDelegates.length})`);
+      console.log(`📊 Tally API: +${delegates.length} delegates | Total: ${allDelegates.length}`);
       
       // Check if we've reached the end
       if (delegates.length === 0 || 
           !response.data.delegates.pageInfo.lastCursor || 
           response.data.delegates.pageInfo.lastCursor === currentCursor) {
-        console.log('Reached end of delegates list');
+        console.log('🏁 Tally API: Completed - reached end of delegates list');
         return allDelegates;
       }
       
       currentCursor = response.data.delegates.pageInfo.lastCursor;
       
       // Wait between requests using adaptive delay
-      console.log(`Waiting ${currentDelay}ms before next request...`);
       await wait(currentDelay);
       
     } catch (error: unknown) {
@@ -215,7 +219,7 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
       if (error instanceof Error && error.message.startsWith('RATE_LIMIT:')) {
         rateLimitRetries++;
         if (rateLimitRetries > API_CONFIG.timing.maxRetries) {
-          console.warn(`Reached maximum retries (${API_CONFIG.timing.maxRetries}) for rate limits. Returning partial results.`);
+          console.warn(`⚠️ Tally API: Max retries (${API_CONFIG.timing.maxRetries}) exceeded. Returning ${allDelegates.length} delegates.`);
           return allDelegates;
         }
 
@@ -228,15 +232,15 @@ export const getDelegates = async (): Promise<TallyDelegate[]> => {
             currentDelay + API_CONFIG.timing.increaseDelayBy
           );
         }
-        console.log(`Rate limit hit (attempt ${rateLimitRetries}/${API_CONFIG.timing.maxRetries}) - increasing delay to ${currentDelay}ms`);
+        console.log(`⏳ Tally API: Rate limit (try ${rateLimitRetries}/${API_CONFIG.timing.maxRetries}) - delay: ${currentDelay}ms`);
         await wait(currentDelay);
         continue;
       }
       
       // For non-rate-limit errors, log and return partial results
-      console.error(`Error fetching delegates:`, error);
+      console.error(`❌ Tally API: Error fetching delegates:`, error);
       if (allDelegates.length > 0) {
-        console.log(`Returning ${allDelegates.length} delegates collected before error`);
+        console.log(`🔄 Tally API: Returning ${allDelegates.length} delegates collected before error`);
         return allDelegates;
       }
       throw error; // If we have no delegates yet, throw the error

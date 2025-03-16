@@ -16,7 +16,13 @@ export const OBOL_CONTRACT_ABI = [
   }
 ] as const;
 
-export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/your-api-key';
+// Construct RPC URL from ALCHEMY_API_KEY
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
+if (!ALCHEMY_API_KEY) {
+  console.warn('ALCHEMY_API_KEY is not set. Blockchain functionality will not work correctly.');
+}
+export const RPC_URL = `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY || ''}`;
+
 export const TALLY_API_KEY = process.env.TALLY_API_KEY;
 
 // Tally API endpoints

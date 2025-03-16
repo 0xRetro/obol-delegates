@@ -79,14 +79,24 @@ export default async function DelegateDataWrapper() {
   // Calculate percentages and add ranks using vote weights
   const totalVotes = voteWeights.reduce((sum: number, w: VoteWeight) => sum + Number(w.weight), 0);
   
+  // Calculate total unique delegators for percentage calculation
+  const totalDelegators = voteWeights.reduce((sum: number, w: VoteWeight) => sum + (w.uniqueDelegators || 0), 0);
+  
   const sortedDelegates = data.delegates
-    .map((delegate: Delegate) => ({
-      ...delegate,
-      votes: weightMap.get(delegate.address.toLowerCase()) || '0.00',
-      percentage: ((Number(weightMap.get(delegate.address.toLowerCase()) || 0) / totalVotes) * 100).toFixed(2),
-      uniqueDelegators: voteWeights.find(w => w.address.toLowerCase() === delegate.address.toLowerCase())?.uniqueDelegators || 0,
-      delegatorPercent: voteWeights.find(w => w.address.toLowerCase() === delegate.address.toLowerCase())?.delegatorPercent
-    }))
+    .map((delegate: Delegate) => {
+      const voteWeight = voteWeights.find(w => w.address.toLowerCase() === delegate.address.toLowerCase());
+      const weight = voteWeight?.weight || '0.00';
+      const uniqueDelegators = voteWeight?.uniqueDelegators || 0;
+      
+      return {
+        ...delegate,
+        votes: weight,
+        percentage: ((Number(weight) / totalVotes) * 100).toFixed(2),
+        uniqueDelegators,
+        delegatorPercent: totalDelegators > 0 ? ((uniqueDelegators / totalDelegators) * 100).toFixed(2) : '0.00',
+        isSeekingDelegation: delegate.tallyProfile || false
+      };
+    })
     .sort((a: DelegateWithVotes, b: DelegateWithVotes) => Number(b.votes) - Number(a.votes))
     .map((delegate: DelegateWithVotes, index: number) => ({
       ...delegate,

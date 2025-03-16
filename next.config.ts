@@ -9,10 +9,7 @@ const nextConfig: NextConfig = {
   images: {
     domains: ['assets.tally.xyz'],
   },
-  reactStrictMode: true,
-  env: {
-    NEXT_PUBLIC_TEST_PAGE_PASSWORD: process.env.TEST_PAGE_PASSWORD
-  }
+  reactStrictMode: true
 };
 
 export default nextConfig;

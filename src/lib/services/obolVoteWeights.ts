@@ -94,7 +94,7 @@ async function calculateEventWeights(): Promise<Map<string, {
   // Get all delegation events - explicitly include incomplete events
   const eventData = await getDelegationEvents(true);
   const allEvents = [...eventData.complete, ...eventData.incomplete];
-  console.log(`Processing ${allEvents.length} total events (${eventData.complete.length} complete, ${eventData.incomplete.length} incomplete)`);
+  console.log(`📥 Processing ${allEvents.length} total events (${eventData.complete.length} complete, ${eventData.incomplete.length} incomplete)`);
   
   // Create a map of address to total weight and unique delegators
   const weightMap = new Map<string, { 
@@ -110,6 +110,7 @@ async function calculateEventWeights(): Promise<Map<string, {
   const allUniqueDelegators = new Set<string>();
   
   // Process each event to build the delegator sets
+  console.log('👥 Building delegator sets...');
   allEvents.forEach(event => {
     if (event.toDelegate && event.delegator) {
       const delegateAddress = event.toDelegate.toLowerCase();
@@ -124,11 +125,13 @@ async function calculateEventWeights(): Promise<Map<string, {
   });
 
   const totalUniqueDelegators = allUniqueDelegators.size;
+  console.log(`📊 Found ${totalUniqueDelegators} unique delegators across all events`);
   
   // Process each unique address
   const uniqueAddresses = new Set(allEvents.map(e => e.toDelegate.toLowerCase()));
-  console.log(`Calculating weights for ${uniqueAddresses.size} unique addresses...`);
+  console.log(`🔄 Calculating weights for ${uniqueAddresses.size} unique addresses...`);
   
+  let processedCount = 0;
   uniqueAddresses.forEach(address => {
     const weight = calculateEventWeight(allEvents, address);
     const uniqueDelegators = delegatorMap.get(address)?.size || 0;
@@ -141,8 +144,14 @@ async function calculateEventWeights(): Promise<Map<string, {
       uniqueDelegators,
       delegatorPercent
     });
+
+    processedCount++;
+    if (uniqueAddresses.size > 100 && processedCount % 50 === 0) {
+      console.log(`⏳ Progress: ${processedCount}/${uniqueAddresses.size} addresses processed`);
+    }
   });
   
+  console.log('✅ Completed weight calculations');
   return weightMap;
 }
 
@@ -211,7 +220,7 @@ export async function updateVoteWeightsWithEvents(): Promise<void> {
 
 export async function clearVoteWeights(): Promise<void> {
   await kv.del(VOTE_WEIGHTS_KEY);
-  console.log('Cleared vote weights data');
+  console.log('🗑️ Cleared vote weights data');
 }
 
 export async function getVoteWeights(): Promise<VoteWeight[]> {
@@ -247,9 +256,9 @@ async function fetchVoteWeightsBatch(
       } catch (error) {
         // More concise error message for expected cases
         if (error instanceof Error && error.message.includes('missing revert data')) {
-          console.log(`Delegate ${delegate.address} has no voting weight`);
+          console.log(`ℹ️ Delegate ${delegate.address} has no voting weight`);
         } else {
-          console.error(`Unexpected error fetching vote weight for ${delegate.address}:`, error);
+          console.error(`❌ Unexpected error fetching vote weight for ${delegate.address}:`, error);
         }
         return {
           address: delegate.address,
@@ -272,7 +281,7 @@ async function storeVoteWeightsBatch(weights: VoteWeight[], startIdx: number): P
   const updatedWeights = [...existingWeights, ...batch];
   await kv.set(VOTE_WEIGHTS_KEY, updatedWeights);
   
-  console.log(`Stored batch of weights: ${startIdx + 1} to ${endIdx} of ${weights.length}`);
+  console.log(`💾 Stored batch of weights: ${startIdx + 1} to ${endIdx} of ${weights.length}`);
 }
 
 export async function fetchOnChainVoteWeights(): Promise<{
@@ -281,8 +290,9 @@ export async function fetchOnChainVoteWeights(): Promise<{
   error?: string;
 }> {
   try {
+    const startTime = Date.now();
     // Clear all existing vote weights at the start
-    console.log('Clearing existing vote weights...');
+    console.log('🗑️ Clearing existing vote weights...');
     await clearVoteWeights();
 
     const delegates = await getDelegateList(true);
@@ -293,7 +303,7 @@ export async function fetchOnChainVoteWeights(): Promise<{
       provider
     );
     
-    console.log(`Fetching vote weights for ${delegates.length} delegates...`);
+    console.log(`⛓️ Fetching vote weights for ${delegates.length} delegates...`);
     
     // First, fetch all vote weights with rate limiting
     const allWeights: VoteWeight[] = [];
@@ -304,7 +314,7 @@ export async function fetchOnChainVoteWeights(): Promise<{
       allWeights.push(...batchWithNullCalc);
       
       // Log progress for API fetching
-      console.log(`Fetched ${Math.min(i + API_BATCH_SIZE, delegates.length)}/${delegates.length} delegate weights`);
+      console.log(`⏳ Progress: ${Math.min(i + API_BATCH_SIZE, delegates.length)}/${delegates.length} delegate weights`);
       
       // If not the last batch, wait 1 second before next API batch
       if (i + API_BATCH_SIZE < delegates.length) {
@@ -312,14 +322,15 @@ export async function fetchOnChainVoteWeights(): Promise<{
       }
     }
 
-    console.log(`Successfully fetched all ${allWeights.length} vote weights. Starting database storage...`);
+    console.log(`✨ Successfully fetched all ${allWeights.length} vote weights. Starting database storage...`);
 
     // Store all weights in database in larger batches
     for (let i = 0; i < allWeights.length; i += DB_BATCH_SIZE) {
       await storeVoteWeightsBatch(allWeights, i);
     }
     
-    console.log(`Successfully stored all ${allWeights.length} vote weights in database`);
+    const duration = Date.now() - startTime;
+    console.log(`✅ Successfully stored all ${allWeights.length} vote weights in database (${duration}ms)`);
     
     // Return the stored weights
     const finalWeights = await getVoteWeights();
@@ -328,7 +339,7 @@ export async function fetchOnChainVoteWeights(): Promise<{
       weights: finalWeights
     };
   } catch (error) {
-    console.error('Error in fetchOnChainVoteWeights:', error);
+    console.error('❌ Error in fetchOnChainVoteWeights:', error);
     return {
       success: false,
       weights: [],

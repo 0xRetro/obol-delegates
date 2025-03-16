@@ -4,7 +4,7 @@ import { getLatestProcessedBlock, processEvents, storeDelegationEvents, storeInc
 import type { DelegationEvent } from '@/lib/types';
 
 const ALCHEMY_URL = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`;
-const BLOCKS_PER_QUERY = 10000; // Limit the number of blocks per query to avoid timeouts
+const BLOCKS_PER_QUERY = 500; // Alchemy limits eth_getLogs to 500 blocks per request
 const OBOL_DEPLOY_BLOCK = 15570746; // Block when contract was first deployed
 
 export const dynamic = 'force-dynamic';
@@ -20,16 +20,16 @@ export async function POST() {
       }, { status: 500 });
     }
 
-    console.log('Starting delegation events sync');
+    console.log('🔄 Blockchain: Starting delegation events sync');
     const provider = new ethers.JsonRpcProvider(ALCHEMY_URL);
     
     // Get latest block with retry
     let latestBlock: number;
     try {
       latestBlock = await provider.getBlockNumber();
-      console.log(`Latest block: ${latestBlock}`);
+      console.log(`📌 Blockchain: Latest block: ${latestBlock}`);
     } catch (error) {
-      console.error('Failed to get latest block:', error);
+      console.error('❌ Blockchain: Failed to get latest block:', error);
       return NextResponse.json({ 
         success: false, 
         error: 'Failed to connect to Ethereum network. Please check your API key and try again.'
@@ -40,7 +40,7 @@ export async function POST() {
     const lastProcessedBlock = await getLatestProcessedBlock();
     const startBlock = lastProcessedBlock ? lastProcessedBlock + 1 : OBOL_DEPLOY_BLOCK;
     
-    console.log(`Processing from block ${startBlock} to ${latestBlock}`);
+    console.log(`📋 Blockchain: Processing from block ${startBlock} to ${latestBlock} (${latestBlock - startBlock + 1} blocks)`);
     
     const allEvents: DelegationEvent[] = [];
     const allIncompleteEvents: DelegationEvent[] = [];
@@ -60,7 +60,7 @@ export async function POST() {
     for (let fromBlock = startBlock; fromBlock <= latestBlock; fromBlock += BLOCKS_PER_QUERY) {
       const toBlock = Math.min(fromBlock + BLOCKS_PER_QUERY - 1, latestBlock);
       
-      console.log(`Processing chunk ${totalStats.processedChunks + 1} of ${totalStats.totalChunks}`);
+      console.log(`⏳ Blockchain: Processing chunk ${totalStats.processedChunks + 1} of ${totalStats.totalChunks}`);
       const { events, incompleteEvents, stats } = await processEvents('0x' + fromBlock.toString(16), '0x' + toBlock.toString(16));
       
       // Accumulate stats
@@ -77,11 +77,14 @@ export async function POST() {
 
     // Store events if we found any
     if (allEvents.length > 0 || allIncompleteEvents.length > 0) {
+      console.log(`💾 Blockchain: Storing ${allEvents.length} complete and ${allIncompleteEvents.length} incomplete events`);
       await storeDelegationEvents(allEvents);
       await storeIncompleteDelegationEvents(allIncompleteEvents);
       
       // Update the latest block based on what's in our tables
       await updateLatestProcessedBlock();
+    } else {
+      console.log(`ℹ️ Blockchain: No new events found to store`);
     }
 
     // Prepare response with detailed statistics and preview
@@ -96,7 +99,7 @@ export async function POST() {
         complete: allEvents.slice(0, 5),
         incomplete: allIncompleteEvents.slice(0, 5)
       },
-      message: `Successfully processed ${totalStats.totalBlocksProcessed} blocks in ${totalStats.processedChunks} chunks. Found ${allEvents.length} complete and ${allIncompleteEvents.length} incomplete events.`
+      message: `✅ Successfully processed ${totalStats.totalBlocksProcessed.toLocaleString()} blocks in ${totalStats.processedChunks} chunks. Found ${allEvents.length} complete and ${allIncompleteEvents.length} incomplete events.`
     };
 
     return NextResponse.json(response, {
@@ -106,7 +109,7 @@ export async function POST() {
       }
     });
   } catch (error) {
-    console.error('Error syncing delegation events:', error);
+    console.error('❌ Blockchain: Error syncing delegation events:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     
     // Check for specific error types

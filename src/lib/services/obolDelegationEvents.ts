@@ -5,8 +5,12 @@ import type { DelegationEvent, EventStats } from '@/lib/types';
 const OBOL_CONTRACT = '0x0b010000b7624eb9b3dfbc279673c76e9d29d5f7';
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY;
 const ALCHEMY_URL = ALCHEMY_API_KEY ? `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` : null;
-const REQUESTS_PER_SECOND = 20;
+const REQUESTS_PER_SECOND = 5;
 const MAX_RETRIES = 3;
+const CACHE_KEY_LATEST_BLOCK = 'obol-delegation-events-latest-block';
+const CACHE_KEY_DELEGATION_EVENTS = 'obol-delegation-events';
+const CACHE_KEY_INCOMPLETE_EVENTS = 'obol-incomplete-votes-changed';
+const BLOCKS_PER_QUERY = 500; // Alchemy limits eth_getLogs to 500 blocks per request
 
 // Event signatures
 const DELEGATE_CHANGED_TOPIC = '0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f';
@@ -41,11 +45,9 @@ class RateLimiter {
   }
 }
 
-export const BLOCKS_PER_QUERY = 10000;
-
 export async function getLatestProcessedBlock(): Promise<number | null> {
   try {
-    const latestBlock = await kv.get<number>('obol-delegation-events-latest-block');
+    const latestBlock = await kv.get<number>(CACHE_KEY_LATEST_BLOCK);
     return latestBlock || null;
   } catch (error) {
     console.error('Error getting latest processed block:', error);
@@ -63,7 +65,7 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
     throw new Error('Alchemy API key is not configured');
   }
 
-  console.log(`Processing events from block ${fromBlock} to ${toBlock}`);
+  console.log(`📥 Blockchain: Processing events from block ${fromBlock} to ${toBlock}`);
   const provider = new ethers.JsonRpcProvider(ALCHEMY_URL);
   let retryCount = 0;
   
@@ -86,6 +88,7 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
       
       // Get logs for both event types
       await rateLimiter.waitForNextRequest();
+      
       const logs = await provider.send('eth_getLogs', [{
         address: OBOL_CONTRACT,
         fromBlock,
@@ -97,7 +100,7 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
         transactionHash: string,
         data: string
       }>;
-
+      
       // Process each log into our event format
       const events: { [key: string]: DelegationEvent & { hasDelegate?: boolean, hasVotes?: boolean } } = {};
       
@@ -105,8 +108,9 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
       const uniqueBlocks = [...new Set(logs.map(log => log.blockNumber))];
       const blockTimestamps: { [blockNumber: string]: number } = {};
       
-      console.log(`Fetching timestamps for ${uniqueBlocks.length} unique blocks`);
-      const TIMESTAMP_BATCH_SIZE = REQUESTS_PER_SECOND; // Use the same rate limit as other API calls
+      console.log(`📊 Blockchain: Found ${logs.length} logs across ${uniqueBlocks.length} unique blocks`);
+      console.log(`⏱️ Blockchain: Fetching timestamps for ${uniqueBlocks.length} unique blocks`);
+      const TIMESTAMP_BATCH_SIZE = REQUESTS_PER_SECOND;
       
       for (let i = 0; i < uniqueBlocks.length; i += TIMESTAMP_BATCH_SIZE) {
         const batchBlocks = uniqueBlocks.slice(i, i + TIMESTAMP_BATCH_SIZE);
@@ -186,19 +190,39 @@ export async function processEvents(fromBlock: string, toBlock: string): Promise
         stats
       };
     } catch (error) {
-      console.error(`Attempt ${retryCount + 1}/${MAX_RETRIES} failed:`, error);
       retryCount++;
+      console.error(`❌ Blockchain: Attempt ${retryCount}/${MAX_RETRIES} failed:`, error);
       
-      if (retryCount === MAX_RETRIES) {
-        throw new Error(`Failed after ${MAX_RETRIES} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Add specific error handling for the block range limit
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Range exceeds limit')) {
+        console.warn(`⚠️ Blockchain: Block range too large (${parseInt(toBlock, 16) - parseInt(fromBlock, 16) + 1} blocks)`);
+        console.warn(`ℹ️ Blockchain: Alchemy limits eth_getLogs to 500 blocks per request`);
+        console.warn(`🔄 Blockchain: Consider reducing BLOCKS_PER_QUERY constant in the code`);
       }
       
-      // Wait before retrying, with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      // If we've hit max retries, return an empty result
+      if (retryCount >= MAX_RETRIES) {
+        console.error(`⛔ Blockchain: Max retries (${MAX_RETRIES}) exceeded. Returning empty result.`);
+        return { events: [], incompleteEvents: [], stats: {
+          totalDelegateChangedEvents: 0,
+          totalVotesChangedEvents: 0,
+          completeSets: 0,
+          incompleteSets: 0,
+          processedChunks: 0,
+          totalChunks: 0,
+          fromBlock: parseInt(fromBlock, 16),
+          toBlock: parseInt(toBlock, 16),
+          blocksProcessed: 0
+        }};
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
     }
   }
-
-  throw new Error('Unexpected end of processEvents');
+  
+  throw new Error('❌ Blockchain: Unexpected end of processEvents');
 }
 
 // Constants for database operations
@@ -234,7 +258,7 @@ export async function updateLatestProcessedBlock(): Promise<void> {
     
     if (newLatestBlock !== currentLatestBlock) {
       console.log(`Setting latest processed block to ${newLatestBlock}`);
-      await kv.set('obol-delegation-events-latest-block', newLatestBlock);
+      await kv.set(CACHE_KEY_LATEST_BLOCK, newLatestBlock);
     } else {
       console.log(`Keeping current latest block ${currentLatestBlock} (no change needed)`);
     }
@@ -266,7 +290,7 @@ export async function storeDelegationEvents(events: DelegationEvent[]): Promise<
     for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
       const batch = uniqueEvents.slice(i, i + BATCH_SIZE);
       try {
-        await kv.rpush('obol-delegation-events', ...batch);
+        await kv.rpush(CACHE_KEY_DELEGATION_EVENTS, ...batch);
         commandsUsed++;
         console.log(`Stored complete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(uniqueEvents.length/BATCH_SIZE)}`);
       } catch (error) {
@@ -304,7 +328,7 @@ export async function storeIncompleteDelegationEvents(events: DelegationEvent[])
     for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
       const batch = uniqueEvents.slice(i, i + BATCH_SIZE);
       try {
-        await kv.rpush('obol-incomplete-votes-changed', ...batch);
+        await kv.rpush(CACHE_KEY_INCOMPLETE_EVENTS, ...batch);
         commandsUsed++;
         console.log(`Stored incomplete batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(uniqueEvents.length/BATCH_SIZE)}`);
       } catch (error) {
@@ -328,14 +352,14 @@ export async function getDelegationEvents(includeIncomplete: boolean = false): P
 
     // Get list lengths first
     const [completeLength, incompleteLength] = await Promise.all([
-      kv.llen('obol-delegation-events'),
-      includeIncomplete ? kv.llen('obol-incomplete-votes-changed') : 0
+      kv.llen(CACHE_KEY_DELEGATION_EVENTS),
+      includeIncomplete ? kv.llen(CACHE_KEY_INCOMPLETE_EVENTS) : 0
     ]);
 
     // Fetch complete events in chunks
     for (let start = 0; start < completeLength; start += CHUNK_SIZE) {
       const end = Math.min(start + CHUNK_SIZE - 1, completeLength - 1);
-      const chunk = await kv.lrange('obol-delegation-events', start, end) || [];
+      const chunk = await kv.lrange(CACHE_KEY_DELEGATION_EVENTS, start, end) || [];
       complete.push(...chunk.map(event => typeof event === 'string' ? JSON.parse(event) : event));
     }
 
@@ -343,7 +367,7 @@ export async function getDelegationEvents(includeIncomplete: boolean = false): P
     if (includeIncomplete) {
       for (let start = 0; start < incompleteLength; start += CHUNK_SIZE) {
         const end = Math.min(start + CHUNK_SIZE - 1, incompleteLength - 1);
-        const chunk = await kv.lrange('obol-incomplete-votes-changed', start, end) || [];
+        const chunk = await kv.lrange(CACHE_KEY_INCOMPLETE_EVENTS, start, end) || [];
         incomplete.push(...chunk.map(event => typeof event === 'string' ? JSON.parse(event) : event));
       }
     }
@@ -417,9 +441,9 @@ export async function clearDelegationEvents(): Promise<void> {
   try {
     console.log('Clearing delegation events data...');
     await Promise.all([
-      kv.del('obol-delegation-events'),
-      kv.del('obol-delegation-events-latest-block'),
-      kv.del('obol-incomplete-votes-changed')  // Add clearing of incomplete votes
+      kv.del(CACHE_KEY_DELEGATION_EVENTS),
+      kv.del(CACHE_KEY_LATEST_BLOCK),
+      kv.del(CACHE_KEY_INCOMPLETE_EVENTS)
     ]);
     console.log('Successfully cleared all delegation events data');
   } catch (error) {

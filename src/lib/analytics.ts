@@ -8,6 +8,7 @@ interface VisitRecord {
   referrer?: string;
   userAgent?: string;
   country?: string;
+  city?: string;
 }
 
 // Analytics keys
@@ -47,6 +48,9 @@ async function isDuplicateVisit(newVisit: VisitRecord): Promise<boolean> {
       // Must have same country
       if (existingVisit.country !== newVisit.country) return false;
       
+      // Must have same city
+      if (existingVisit.city !== newVisit.city) return false;
+      
       // Check referrer - if the new visit's referrer is our own site, likely a refresh
       const isInternalNavigation = newVisit.referrer?.includes('0xretro.xyz') || 
                                   newVisit.referrer?.includes('localhost:3000');
@@ -68,13 +72,18 @@ export async function trackPageView(request: NextRequest) {
   try {
     // Only track root path visits
     if (request.nextUrl.pathname === '/') {
+      // Get geolocation data from Vercel headers
+      const country = request.headers.get('x-vercel-ip-country') || 'unknown';
+      const city = request.headers.get('x-vercel-ip-city') || 'unknown';
+      
       // Create visit record
       const visitRecord: VisitRecord = {
         timestamp: Date.now(),
         path: '/',
         referrer: request.headers.get('referer') || 'direct',
         userAgent: request.headers.get('user-agent') || 'unknown',
-        country: 'unknown'
+        country,
+        city
       };
 
       // Check if this visit appears to be a refresh/duplicate
@@ -108,13 +117,13 @@ export async function getBasicAnalytics() {
     // Calculate total views from actual raw visits count
     const totalViews = rawVisits.length;
     
-    // Calculate unique visitors (unique combinations of userAgent+country)
+    // Calculate unique visitors (unique combinations of userAgent+country+city)
     const uniqueVisitorSet = new Set();
     const pathCounts: Record<string, number> = {};
     
     rawVisits.forEach(visit => {
       // Track unique visitors
-      const visitorKey = `${visit.userAgent}|${visit.country}`;
+      const visitorKey = `${visit.userAgent}|${visit.country}|${visit.city || 'unknown'}`;
       uniqueVisitorSet.add(visitorKey);
       
       // Track path counts
@@ -171,11 +180,11 @@ export async function getVisitsByDay(days: number = 30) {
         // Count total visits
         dailyVisits[day] = (dailyVisits[day] || 0) + 1;
         
-        // Track unique visitors (userAgent+country combination)
+        // Track unique visitors (userAgent+country+city combination)
         if (!visitorsByDay[day]) {
           visitorsByDay[day] = new Set();
         }
-        const visitorKey = `${visit.userAgent}|${visit.country}`;
+        const visitorKey = `${visit.userAgent}|${visit.country}|${visit.city || 'unknown'}`;
         visitorsByDay[day].add(visitorKey);
       }
     });
